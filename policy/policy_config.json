@@ -1,0 +1,274 @@
+{
+  "meta": {
+    "name": "CHEM Policy Configuration",
+    "version": "1.0.0",
+    "description": "Single source of truth for CHEM (Compositional Harm Emergence Modeling). All harm categories, visual concepts, toxic-bert label mappings, policy clauses, and tunable coefficients are defined here so that NO harm semantics are ever hardcoded inside Python files.",
+    "policy_clauses_description": "Maps each harm category to a numbered policy clause across real platform policy structures.",
+    "policy_sources": [
+      "Meta Community Standards (2024)",
+      "YouTube Community Guidelines (2024)",
+      "EU Digital Services Act (Regulation 2022/2065)"
+    ],
+    "embedding_dim": 768
+  },
+
+  "harm_categories": {
+    "hate_speech": {
+      "id": "hate_speech",
+      "display_name": "Hate speech targeting a person or group",
+      "description": "Direct attacks against people on the basis of protected characteristics such as race, ethnicity, national origin, religion, caste, sexual orientation, sex, gender identity, disability or serious disease.",
+      "severity": "high",
+      "harmful": true
+    },
+    "violent_threat": {
+      "id": "violent_threat",
+      "display_name": "Violent or threatening content",
+      "description": "Statements of intent, calls or aspirations to commit violence against an individual or group, or threats that could lead to death or serious injury.",
+      "severity": "critical",
+      "harmful": true
+    },
+    "child_safety": {
+      "id": "child_safety",
+      "display_name": "Content targeting a child",
+      "description": "Content that sexualizes, endangers, grooms, or otherwise targets minors, including attempts to establish secret contact with a child.",
+      "severity": "critical",
+      "harmful": true
+    },
+    "weapons_threat": {
+      "id": "weapons_threat",
+      "display_name": "Weapons in a threatening context",
+      "description": "Depiction or brandishing of weapons directed at a person or group in a manner that communicates intent to harm.",
+      "severity": "critical",
+      "harmful": true
+    },
+    "harassment_bullying": {
+      "id": "harassment_bullying",
+      "display_name": "Harassment and bullying",
+      "description": "Repeated or targeted degradation, mockery, or intimidation of a private individual.",
+      "severity": "medium",
+      "harmful": true
+    },
+    "graphic_violence": {
+      "id": "graphic_violence",
+      "display_name": "Graphic violence",
+      "description": "Gratuitous depictions of violence, gore, or physical harm to people or animals.",
+      "severity": "high",
+      "harmful": true
+    },
+    "dangerous_misinformation": {
+      "id": "dangerous_misinformation",
+      "display_name": "Dangerous misinformation",
+      "description": "False information that can contribute to imminent physical harm, public-health harm, or election interference.",
+      "severity": "high",
+      "harmful": true
+    },
+    "extremist_content": {
+      "id": "extremist_content",
+      "display_name": "Extremist content",
+      "description": "Praise, support, or representation of dangerous organizations or individuals engaged in terrorism or organized hate.",
+      "severity": "critical",
+      "harmful": true
+    },
+    "sexual_exploitation": {
+      "id": "sexual_exploitation",
+      "display_name": "Sexual exploitation",
+      "description": "Content that sexually exploits or endangers people, including non-consensual sexual content.",
+      "severity": "critical",
+      "harmful": true
+    },
+    "coordinated_harm": {
+      "id": "coordinated_harm",
+      "display_name": "Coordinated harmful behavior",
+      "description": "Organized efforts by multiple actors to cause harm, brigade, or manipulate a platform.",
+      "severity": "high",
+      "harmful": true
+    }
+  },
+
+  "safe_categories": {
+    "benign_text": {
+      "id": "benign_text",
+      "display_name": "Benign text",
+      "description": "Ordinary, non-harmful language.",
+      "harmful": false
+    },
+    "neutral_scene": {
+      "id": "neutral_scene",
+      "display_name": "Neutral scene",
+      "description": "Everyday non-harmful imagery.",
+      "harmful": false
+    }
+  },
+
+  "toxic_bert_mapping": {
+    "description": "Maps the six unitary/toxic-bert output labels to CHEM policy harm categories. Used by the text encoder so that toxic-bert scores are re-expressed as policy categories with no hardcoded semantics in Python.",
+    "labels": {
+      "toxic": "harassment_bullying",
+      "severe_toxic": "hate_speech",
+      "obscene": "harassment_bullying",
+      "threat": "violent_threat",
+      "insult": "harassment_bullying",
+      "identity_hate": "hate_speech"
+    },
+    "text_harm_score_labels": ["toxic", "severe_toxic", "threat", "identity_hate"],
+    "harmful_signal_threshold": 0.5
+  },
+
+  "visual_concepts": {
+    "description": "Action-based natural-language prompts used for CLIP zero-shot classification. Harmful concepts describe a harmful action or composition, not a bare object. Safe concepts anchor the softmax so harmful scores are relative to plausible benign interpretations.",
+    "harmful": [
+      { "prompt": "a person holding a weapon and threatening another person", "category": "weapons_threat" },
+      { "prompt": "a person pointing a gun at someone's head", "category": "weapons_threat" },
+      { "prompt": "a knife raised in a threatening manner toward a person", "category": "weapons_threat" },
+      { "prompt": "a person stalking or following another person with a knife in a dark place", "category": "weapons_threat" },
+      { "prompt": "a hooded figure holding a knife following a woman in a dark corridor", "category": "weapons_threat" },
+      { "prompt": "a person carrying a weapon while approaching an unsuspecting victim", "category": "weapons_threat" },
+      { "prompt": "a crowd of people attacking an individual", "category": "violent_threat" },
+      { "prompt": "an angry mob holding torches and marching", "category": "extremist_content" },
+      { "prompt": "a hate symbol such as a swastika or burning cross", "category": "hate_speech" },
+      { "prompt": "graphic depiction of blood and physical injury on a person", "category": "graphic_violence" },
+      { "prompt": "a person physically assaulting another person", "category": "violent_threat" },
+      { "prompt": "a child in a sexualized or endangered situation", "category": "child_safety" },
+      { "prompt": "an adult attempting to secretly contact a child", "category": "child_safety" },
+      { "prompt": "a person degrading or mocking another person to humiliate them", "category": "harassment_bullying" },
+      { "prompt": "extremist propaganda imagery with flags and masked fighters", "category": "extremist_content" },
+      { "prompt": "sexually explicit exploitation of a person", "category": "sexual_exploitation" },
+      { "prompt": "a fabricated news headline spreading dangerous false claims", "category": "dangerous_misinformation" }
+    ],
+    "safe": [
+      { "prompt": "a group of friends smiling at a party", "category": "neutral_scene" },
+      { "prompt": "a person cooking food in a kitchen", "category": "neutral_scene" },
+      { "prompt": "a peaceful landscape with mountains and a lake", "category": "neutral_scene" },
+      { "prompt": "children playing safely in a playground", "category": "neutral_scene" },
+      { "prompt": "a person giving a business presentation", "category": "neutral_scene" },
+      { "prompt": "a pet dog sitting on a couch", "category": "neutral_scene" },
+      { "prompt": "a sports team celebrating a victory", "category": "neutral_scene" },
+      { "prompt": "a plate of food on a restaurant table", "category": "neutral_scene" }
+    ]
+  },
+
+  "video_action_mapping": {
+    "description": "Maps a subset of Kinetics-400 VideoMAE action labels (substring match, case-insensitive) to CHEM harm categories. Actions not listed are treated as benign.",
+    "harmful_actions": {
+      "punching": "violent_threat",
+      "wrestling": "graphic_violence",
+      "sword fighting": "weapons_threat",
+      "slapping": "violent_threat",
+      "headbutting": "violent_threat",
+      "kicking": "violent_threat",
+      "shooting": "weapons_threat",
+      "arresting": "graphic_violence",
+      "capoeira": "graphic_violence"
+    }
+  },
+
+  "policy_clauses": {
+    "hate_speech": {
+      "clause_id": "MCS-3.2",
+      "title": "Hate Speech",
+      "source": "Meta Community Standards",
+      "section": "III. Objectionable Content — 3. Hate Speech",
+      "text": "We do not allow direct attacks against people on the basis of protected characteristics."
+    },
+    "violent_threat": {
+      "clause_id": "MCS-1.1",
+      "title": "Violence and Incitement",
+      "source": "Meta Community Standards",
+      "section": "I. Violence and Criminal Behavior — 1. Violence and Incitement",
+      "text": "We remove threats of violence that could lead to death or serious injury."
+    },
+    "child_safety": {
+      "clause_id": "YT-CSE-1",
+      "title": "Child Safety",
+      "source": "YouTube Community Guidelines",
+      "section": "Sensitive Content — Child Safety",
+      "text": "Content that endangers the emotional and physical well-being of minors is prohibited."
+    },
+    "weapons_threat": {
+      "clause_id": "MCS-1.4",
+      "title": "Restricted Goods — Weapons",
+      "source": "Meta Community Standards",
+      "section": "I. Violence and Criminal Behavior — 4. Coordinating Harm and Promoting Crime",
+      "text": "We prohibit brandishing weapons with intent to threaten or harm others."
+    },
+    "harassment_bullying": {
+      "clause_id": "MCS-5.1",
+      "title": "Bullying and Harassment",
+      "source": "Meta Community Standards",
+      "section": "V. Safety — 5. Bullying and Harassment",
+      "text": "We remove content that targets private individuals with degradation or intimidation."
+    },
+    "graphic_violence": {
+      "clause_id": "YT-VG-2",
+      "title": "Violent or Graphic Content",
+      "source": "YouTube Community Guidelines",
+      "section": "Violent or Dangerous Content — Graphic Content",
+      "text": "Gratuitous graphic depictions intended to shock are not allowed."
+    },
+    "dangerous_misinformation": {
+      "clause_id": "DSA-Art34",
+      "title": "Systemic Risk — Disinformation",
+      "source": "EU Digital Services Act",
+      "section": "Article 34 — Risk Assessment",
+      "text": "Very large platforms must mitigate dissemination of illegal or harmful disinformation."
+    },
+    "extremist_content": {
+      "clause_id": "MCS-2.1",
+      "title": "Dangerous Organizations and Individuals",
+      "source": "Meta Community Standards",
+      "section": "I. Violence and Criminal Behavior — 2. Dangerous Organizations",
+      "text": "We remove praise, support, or representation of terrorist and hate organizations."
+    },
+    "sexual_exploitation": {
+      "clause_id": "MCS-4.2",
+      "title": "Sexual Exploitation of Adults",
+      "source": "Meta Community Standards",
+      "section": "IV. Adult Content — 4. Sexual Exploitation",
+      "text": "We prohibit content that sexually exploits or endangers people."
+    },
+    "coordinated_harm": {
+      "clause_id": "DSA-Art35",
+      "title": "Mitigation of Coordinated Manipulation",
+      "source": "EU Digital Services Act",
+      "section": "Article 35 — Mitigation of Risks",
+      "text": "Platforms must act against coordinated inauthentic and harmful behavior."
+    }
+  },
+
+  "exculpatory_keywords": {
+    "description": "Words/phrases in accompanying text that signal a benign real-world context (acting, prop, costume, etc.). When any keyword matches, the image/video harm score is multiplied by exculpatory_dampening_factor before fusion.",
+    "keywords": [
+      "audition", "auditioning", "acting", "actor", "actress", "film", "movie",
+      "prop", "costume", "cosplay", "theater", "theatre", "stage", "scene",
+      "police role", "character", "stunt", "photoshoot", "photo shoot",
+      "stock photo", "model", "music video", "short film", "tv show", "tv series",
+      "rehearsal", "script", "role", "performance", "halloween"
+    ]
+  },
+
+  "coefficients": {
+    "description": "All tunable numeric coefficients. Nothing numeric that governs harm semantics is hardcoded in Python; modules read from here.",
+    "exculpatory_dampening_factor": 0.3,
+    "image_harmful_min_confidence": 0.25,
+    "final_harm_threshold": 0.35,
+    "cross_modal_bonus": 0.2,
+    "cross_modal_min_image_score": 0.3,
+    "cross_modal_min_audio_score": 0.25,
+    "audio_transcript_weight": 0.7,
+    "audio_acoustic_weight": 0.3,
+    "gat_vs_pattern_weight": 0.7,
+    "pattern_similarity_weight": 0.3,
+    "co_occurrence_window": 2,
+    "acoustic_agitation_sigma_ratio": 1.0
+  },
+
+  "node_types": ["text", "image", "audio", "video", "action"],
+
+  "edge_types": {
+    "co_occurrence": 0,
+    "semantic_reference": 1,
+    "temporal_sequence": 2,
+    "target_pointing": 3,
+    "harmful_pattern": 4
+  }
+}

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>CHEM — Multimodal Policy Analyzer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:       #0b0c0b;
+  --s1:       #111311;
+  --s2:       #161816;
+  --s3:       #1c1f1c;
+  --border:   #242724;
+  --border2:  #2e322e;
+  --green:    #00ff88;
+  --green2:   #00cc6a;
+  --amber:    #ffaa00;
+  --red:      #ff3b3b;
+  --blue:     #4da6ff;
+  --purple:   #b06aff;
+  --text:     #c8cec8;
+  --muted:    #5a635a;
+  --muted2:   #3a3f3a;
+  --label:    #7a877a;
+  --mono: 'Courier New',Courier,monospace;
+  --gap: 1px;
+}
+
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.5;overflow:hidden}
+
+/* ── LAYOUT ── */
+.shell{display:grid;grid-template-rows:auto auto 1fr auto;height:100vh}
+
+/* ── HEADER ── */
+header{
+  display:flex;align-items:center;gap:24px;
+  padding:0 20px;height:44px;
+  background:var(--s1);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:8px;color:var(--green);font-weight:700;font-size:11px;letter-spacing:.12em;white-space:nowrap}
+.brand-dot{width:7px;height:7px;background:var(--green);border-radius:50%;box-shadow:0 0 6px var(--green)}
+.status-pill{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-left:auto}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.status-dot.online{background:var(--green);box-shadow:0 0 5px var(--green)}
+.status-dot.err{background:var(--red)}
+.hdr-btn{background:none;border:1px solid var(--border2);color:var(--label);font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:3px 10px;cursor:pointer;transition:border-color .15s,color .15s}
+.hdr-btn:hover{border-color:var(--green);color:var(--green)}
+
+/* ── PIPELINE ── */
+.pipeline{
+  display:flex;align-items:center;
+  padding:0 20px;height:36px;
+  background:var(--s1);border-bottom:1px solid var(--border);
+  gap:0;overflow-x:auto;flex-shrink:0;
+}
+.pipe-step{
+  display:flex;align-items:center;gap:6px;
+  font-size:10px;letter-spacing:.08em;color:var(--muted);
+  white-space:nowrap;padding:0 12px 0 4px;
+  cursor:default;user-select:none;
+}
+.pipe-step.active{color:var(--green)}
+.pipe-step.done{color:var(--green2)}
+.pipe-num{
+  width:16px;height:16px;border:1px solid currentColor;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;flex-shrink:0;
+}
+.pipe-arrow{color:var(--muted2);font-size:10px;padding-right:4px}
+
+/* ── MAIN 3-COL ── */
+.cols{
+  display:grid;
+  grid-template-columns:280px 1fr 240px;
+  gap:var(--gap);
+  background:var(--border);
+  overflow:hidden;
+}
+.col{background:var(--bg);overflow-y:auto;display:flex;flex-direction:column}
+.col::-webkit-scrollbar{width:3px}
+.col::-webkit-scrollbar-track{background:var(--bg)}
+.col::-webkit-scrollbar-thumb{background:var(--border2)}
+
+/* ── SECTION HEADERS ── */
+.sec-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;font-size:10px;letter-spacing:.1em;
+  color:var(--label);border-bottom:1px solid var(--border);
+  background:var(--s1);flex-shrink:0;
+}
+.sec-hdr .tag{color:var(--text);font-size:10px}
+.sec-tri{color:var(--green);margin-right:6px}
+
+/* ── LEFT COL ── */
+.input-block{padding:12px 14px;border-bottom:1px solid var(--border)}
+.input-label{font-size:10px;color:var(--label);letter-spacing:.08em;margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.input-label .marker{color:var(--green)}
+textarea{
+  width:100%;background:var(--s2);border:1px solid var(--border2);
+  color:var(--text);font-family:var(--mono);font-size:11px;
+  padding:8px;resize:vertical;min-height:72px;outline:none;
+  transition:border-color .15s;
+}
+textarea:focus{border-color:var(--green)}
+.char-count{text-align:right;font-size:10px;color:var(--muted);margin-top:4px}
+
+.upload-btn{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;background:var(--s2);border:1px solid var(--border2);
+  color:var(--label);font-family:var(--mono);font-size:11px;
+  padding:7px 10px;cursor:pointer;transition:border-color .15s,color .15s;
+  position:relative;overflow:hidden;
+}
+.upload-btn:hover{border-color:var(--green);color:var(--green)}
+.upload-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.upload-btn .fn{font-size:10px;color:var(--green2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upload-sub{margin-top:6px}
+.rec-btn{
+  display:flex;align-items:center;gap:6px;margin-top:6px;
+  background:var(--s2);border:1px solid var(--border2);
+  color:var(--muted);font-family:var(--mono);font-size:11px;
+  padding:6px 10px;cursor:pointer;transition:border-color .15s,color .15s;width:100%;
+}
+.rec-btn:hover{border-color:var(--amber);color:var(--amber)}
+.rec-dot{width:6px;height:6px;border-radius:50%;background:var(--red)}
+.coming{color:var(--muted2);font-size:11px;padding:7px 10px;border:1px solid var(--muted2);display:flex;align-items:center;justify-content:space-between}
+
+.policies-block{padding:12px 14px;flex:1}
+.policy-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.policy-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text);cursor:pointer}
+.policy-item input[type=checkbox]{accent-color:var(--green);width:12px;height:12px;cursor:pointer}
+.policy-item.dim{color:var(--muted)}
+
+.img-preview{width:100%;max-height:120px;object-fit:contain;display:none;margin-top:8px;border:1px solid var(--border2)}
+
+/* ── MIDDLE COL ── */
+.gauge-wrap{padding:16px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:10px}
+.gauge-label{font-size:10px;letter-spacing:.1em;color:var(--label)}
+canvas#gauge{display:block}
+.gauge-status{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.gauge-status .gsdot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+
+.cats-block{padding:12px 14px;border-bottom:1px solid var(--border)}
+.cat-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:11px}
+.cat-name{width:72px;color:var(--label);flex-shrink:0}
+.cat-bar-bg{flex:1;height:6px;background:var(--s3)}
+.cat-bar-fill{height:100%;width:0%;transition:width .6s ease;background:var(--green)}
+.cat-val{width:24px;text-align:right;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.graph-block{padding:12px 14px;border-bottom:1px solid var(--border);flex:1;display:flex;flex-direction:column}
+canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-height:140px;width:100%}
+.graph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;color:var(--muted);font-size:10px;letter-spacing:.08em;min-height:140px;border:1px solid var(--border);background:var(--s1)}
+.graph-empty svg{opacity:.3}
+.legend{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)}
+.leg-line{width:18px;height:2px}
+
+.evidence-block{padding:12px 14px}
+.evidence-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 8px;border:1px solid var(--border);margin-bottom:4px;
+  font-size:11px;cursor:pointer;transition:border-color .15s;background:var(--s1);
+}
+.evidence-row:hover{border-color:var(--green2)}
+.evidence-row.active{border-color:var(--green);background:var(--s2)}
+.ev-left{display:flex;align-items:center;gap:8px}
+.ev-badge{width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--green);border:1px solid var(--green);flex-shrink:0}
+.ev-score{font-size:10px;color:var(--muted)}
+.ev-arrow{color:var(--muted2);font-size:10px}
+.ev-row-special{border-color:var(--green2);background:rgba(0,255,136,.04)}
+.ev-dot-green{color:var(--green);margin-right:4px}
+
+/* ── RIGHT COL ── */
+.right-block{padding:12px 14px;border-bottom:1px solid var(--border)}
+.r-label{font-size:10px;letter-spacing:.1em;color:var(--label);margin-bottom:6px}
+.r-val{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+.r-val.big{font-size:22px;font-weight:700;color:var(--text)}
+.r-val.harmful{color:var(--red)}
+.r-val.safe{color:var(--green)}
+.r-val.review{color:var(--amber)}
+.r-dash{color:var(--muted2)}
+.r-sub{font-size:10px;color:var(--muted);margin-top:2px}
+
+.policy-triggered-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.ptag{font-size:10px;padding:2px 6px;border:1px solid var(--border2);color:var(--label);display:inline-block}
+.ptag.active{border-color:var(--red);color:var(--red);background:rgba(255,59,59,.06)}
+
+.explanation-block{padding:12px 14px;flex:1}
+.expl-text{font-size:11px;color:var(--muted);line-height:1.7}
+
+/* ── BOTTOM BAR ── */
+.bottom-bar{
+  display:grid;grid-template-columns:280px 1fr 240px;
+  gap:var(--gap);background:var(--border);
+  border-top:1px solid var(--border);flex-shrink:0;
+}
+.bar-left,.bar-mid,.bar-right{background:var(--s1);padding:10px 14px;display:flex;align-items:center;gap:8px}
+.bar-mid{justify-content:center}
+.bar-right{justify-content:flex-end;gap:8px}
+
+.btn-analyze{
+  flex:1;background:transparent;border:1px solid var(--green);
+  color:var(--green);font-family:var(--mono);font-size:12px;
+  letter-spacing:.1em;padding:9px;cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.btn-analyze:hover{background:var(--green);color:var(--bg)}
+.btn-analyze:disabled{opacity:.4;cursor:not-allowed}
+
+.btn-verdict{
+  background:transparent;font-family:var(--mono);font-size:11px;
+  letter-spacing:.08em;padding:7px 14px;cursor:pointer;
+  transition:background .15s,color .15s;border:1px solid;
+}
+.btn-allow {border-color:var(--green); color:var(--green)}
+.btn-allow:hover{background:var(--green);color:var(--bg)}
+.btn-review{border-color:var(--amber);color:var(--amber)}
+.btn-review:hover{background:var(--amber);color:var(--bg)}
+.btn-block {border-color:var(--red);  color:var(--red)}
+.btn-block:hover{background:var(--red);color:#fff}
+
+.spinner{display:none;width:14px;height:14px;border:2px solid rgba(0,255,136,.2);border-top-color:var(--green);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* scrollbar for middle col */
+.mid-inner{display:flex;flex-direction:column;overflow-y:auto;height:100%}
+.mid-inner::-webkit-scrollbar{width:3px}
+.mid-inner::-webkit-scrollbar-thumb{background:var(--border2)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- HEADER -->
+<header>
+  <div class="brand">
+    <div class="brand-dot"></div>
+    MULTIMODAL POLICY ANALYZER
+  </div>
+  <div class="status-pill">
+    <div class="status-dot" id="sdot"></div>
+    <span id="stxt">offline — start app.py</span>
+  </div>
+  <button class="hdr-btn">History</button>
+  <button class="hdr-btn">Settings</button>
+</header>
+
+<!-- PIPELINE -->
+<div class="pipeline">
+  <div class="pipe-step active" id="ps1"><div class="pipe-num">1</div>Input</div>
+  <div class="pipe-arrow">——</div>
+  <div class="pipe-step" id="ps2"><div class="pipe-num">2</div>Decompose</div>
+  <div class="pipe-arrow">——</div>
+  <div class="pipe-step" id="ps3"><div class="pipe-num">3</div>Build Graph</div>
+  <div class="pipe-arrow">——</div>
+  <div class="pipe-step" id="ps4"><div class="pipe-num">4</div>Match</div>
+  <div class="pipe-arrow">——</div>
+  <div class="pipe-step" id="ps5"><div class="pipe-num">5</div>Score</div>
+  <div class="pipe-arrow">——</div>
+  <div class="pipe-step" id="ps6"><div class="pipe-num">6</div>Explain</div>
+</div>
+
+<!-- MAIN -->
+<div class="cols">
+
+  <!-- LEFT: INPUTS -->
+  <div class="col">
+    <div class="sec-hdr">
+      <span><span class="sec-tri">►</span>INPUTS</span>
+      <span class="tag">4 modalities</span>
+    </div>
+
+    <!-- Text -->
+    <div class="input-block">
+      <div class="input-label"><span class="marker">►</span>Text</div>
+      <textarea id="txt" placeholder="Enter text, caption or speech…" oninput="document.getElementById('cc').textContent=this.value.length+' chars'"></textarea>
+      <div class="char-count" id="cc">0 chars</div>
+    </div>
+
+    <!-- Image -->
+    <div class="input-block">
+      <div class="input-label"><span class="marker">►</span>Image</div>
+      <label class="upload-btn">
+        <span>[ Upload ]</span><span>▸</span>
+        <input type="file" id="img-file" accept="image/*" onchange="onFile(this,'img-name','img-preview')"/>
+      </label>
+      <div class="fn" id="img-name"></div>
+      <img id="img-preview" class="img-preview" alt=""/>
+    </div>
+
+    <!-- Audio -->
+    <div class="input-block">
+      <div class="input-label"><span class="marker">►</span>Audio</div>
+      <label class="upload-btn">
+        <span>[ Upload ]</span><span>▸</span>
+        <input type="file" id="aud-file" accept="audio/*" onchange="onFile(this,'aud-name',null)"/>
+      </label>
+      <div class="fn" id="aud-name"></div>
+      <button class="rec-btn" onclick="alert('Recording not supported in this build.')">
+        <div class="rec-dot"></div>[ Record ]
+      </button>
+    </div>
+
+    <!-- Video -->
+    <div class="input-block">
+      <div class="input-label"><span class="marker">►</span>Video</div>
+      <div class="coming"><span>[ Coming soon ]</span><span style="color:var(--muted2)">—</span></div>
+    </div>
+
+    <!-- Policies -->
+    <div class="policies-block">
+      <div class="sec-hdr" style="margin:0 -14px 8px;padding:6px 14px">POLICIES</div>
+      <div class="policy-list" id="policy-list"></div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: ANALYSIS -->
+  <div class="col">
+    <div class="mid-inner">
+
+      <!-- Gauge -->
+      <div class="gauge-wrap">
+        <div class="gauge-label">► HARM SCORE</div>
+        <canvas id="gauge" width="160" height="100"></canvas>
+        <div class="gauge-status">
+          <div class="gsdot" id="gsdot"></div>
+          <span id="gstxt">AWAITING INPUT</span>
+        </div>
+      </div>
+
+      <!-- Risk by category -->
+      <div class="cats-block">
+        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">► RISK BY CATEGORY</div>
+        <div id="cats"></div>
+      </div>
+
+      <!-- CCG -->
+      <div class="graph-block">
+        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">CONTENT COMPOSITION GRAPH</div>
+        <div class="graph-empty" id="graph-empty">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <circle cx="8" cy="16" r="4" stroke="#5a635a" stroke-width="1.5"/>
+            <circle cx="24" cy="8" r="4" stroke="#5a635a" stroke-width="1.5"/>
+            <circle cx="24" cy="24" r="4" stroke="#5a635a" stroke-width="1.5"/>
+            <line x1="12" y1="14" x2="20" y2="10" stroke="#5a635a" stroke-width="1"/>
+            <line x1="12" y1="18" x2="20" y2="22" stroke="#5a635a" stroke-width="1"/>
+          </svg>
+          GRAPH RENDERS AFTER ANALYSIS
+        </div>
+        <canvas id="graph" style="display:none"></canvas>
+        <div class="legend">
+          <div class="leg-item"><div class="leg-line" style="background:var(--green)"></div>co-occur</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--blue)"></div>semantic</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--amber)"></div>temporal</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--red)"></div>harmful</div>
+        </div>
+      </div>
+
+      <!-- Multimodal evidence -->
+      <div class="evidence-block">
+        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">► MULTIMODAL EVIDENCE</div>
+        <div id="ev-text" class="evidence-row"><div class="ev-left"><div class="ev-badge">T</div>Text encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-text-score">—</span><span class="ev-arrow">——</span></div></div>
+        <div id="ev-image" class="evidence-row"><div class="ev-left"><div class="ev-badge">I</div>Image encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-image-score">—</span><span class="ev-arrow">——</span></div></div>
+        <div id="ev-audio" class="evidence-row"><div class="ev-left"><div class="ev-badge">A</div>Audio encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-audio-score">—</span><span class="ev-arrow">——</span></div></div>
+        <div class="evidence-row ev-row-special">
+          <div class="ev-left"><span class="ev-dot-green">◆</span>Compositional harm score</div>
+          <div class="ev-arrow">——</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: RESULTS -->
+  <div class="col">
+    <div class="sec-hdr">
+      <span><span class="sec-tri">►</span>RESULTS</span>
+    </div>
+
+    <div class="right-block">
+      <div class="r-label">OVERALL RISK</div>
+      <div class="r-val big" id="r-score"><span class="r-dash">—</span> <span style="font-size:13px;color:var(--muted)">/ 100</span></div>
+      <div class="r-sub" id="r-verdict">—</div>
+    </div>
+
+    <div class="right-block">
+      <div class="r-label">POLICY STATUS</div>
+      <div class="r-val" id="r-status"><span class="r-dash">—</span></div>
+    </div>
+
+    <div class="right-block">
+      <div class="r-label">POLICIES TRIGGERED</div>
+      <div class="policy-triggered-list" id="r-policies"><span class="r-dash">—</span></div>
+    </div>
+
+    <div class="right-block">
+      <div class="r-label">EVIDENCE</div>
+      <div class="r-val" id="r-evidence" style="font-size:11px;color:var(--muted)"><span class="r-dash">—</span></div>
+    </div>
+
+    <div class="explanation-block">
+      <div class="r-label">EXPLANATION</div>
+      <div class="expl-text" id="r-expl">Awaiting analysis…</div>
+    </div>
+  </div>
+
+</div><!-- /cols -->
+
+<!-- BOTTOM BAR -->
+<div class="bottom-bar">
+  <div class="bar-left">
+    <button class="btn-analyze" id="analyze-btn" onclick="runAnalysis()">
+      [ ANALYZE ]
+    </button>
+    <div class="spinner" id="spin"></div>
+  </div>
+  <div class="bar-mid" style="font-size:10px;color:var(--muted);letter-spacing:.06em">
+    <span id="bar-status">ready</span>
+  </div>
+  <div class="bar-right">
+    <button class="btn-verdict btn-allow"  onclick="verdict('ALLOW')">ALLOW</button>
+    <button class="btn-verdict btn-review" onclick="verdict('REVIEW')">REVIEW</button>
+    <button class="btn-verdict btn-block"  onclick="verdict('BLOCK')">BLOCK</button>
+  </div>
+</div>
+
+</div><!-- /shell -->
+
+<script>
+const API = 'http://127.0.0.1:8000';
+
+/* ── policies list ── */
+const POLICIES = ['Violence','Hate Speech','Self-harm','Drugs','Extremism','Weapons'];
+const polList = document.getElementById('policy-list');
+POLICIES.forEach(p => {
+  const d = document.createElement('div');
+  d.className = 'policy-item';
+  d.innerHTML = `<input type="checkbox" checked/>${p}`;
+  polList.appendChild(d);
+});
+
+/* ── categories ── */
+const CATS = [
+  {key:'violent_threat',   label:'Violence'},
+  {key:'hate_speech',      label:'Hate'},
+  {key:'harassment_bullying',label:'Harassment'},
+  {key:'weapons_threat',   label:'Weapons'},
+  {key:'extremist_content',label:'Extremism'},
+  {key:'dangerous_misinformation',label:'Misinfo'},
+];
+const catsEl = document.getElementById('cats');
+CATS.forEach(c => {
+  catsEl.innerHTML += `
+    <div class="cat-row">
+      <div class="cat-name">${c.label}</div>
+      <div class="cat-bar-bg"><div class="cat-bar-fill" id="cat-${c.key}" style="background:var(--green)"></div></div>
+      <div class="cat-val" id="catv-${c.key}">—</div>
+    </div>`;
+});
+
+/* ── file inputs ── */
+function onFile(inp, nameId, previewId) {
+  const f = inp.files[0];
+  if (!f) return;
+  document.getElementById(nameId).textContent = f.name;
+  if (previewId) {
+    const img = document.getElementById(previewId);
+    img.src = URL.createObjectURL(f);
+    img.style.display = 'block';
+  }
+}
+
+/* ── health check ── */
+async function health() {
+  try {
+    const r = await fetch(`${API}/health`, {signal: AbortSignal.timeout(3000)});
+    const d = await r.json();
+    const ok = d.models_loaded;
+    document.getElementById('sdot').className = 'status-dot ' + (ok ? 'online' : 'err');
+    document.getElementById('stxt').textContent = ok ? 'online — models loaded' : 'degraded — ' + (d.error||'loading');
+  } catch {
+    document.getElementById('sdot').className = 'status-dot err';
+    document.getElementById('stxt').textContent = 'offline — start app.py';
+  }
+}
+health(); setInterval(health, 8000);
+
+/* ── gauge ── */
+function drawGauge(score, verdict) {
+  const cv = document.getElementById('gauge');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0,0,W,H);
+
+  const cx = W/2, cy = H - 12;
+  const r = 72, start = Math.PI, end = 2*Math.PI;
+
+  // Track
+  ctx.beginPath(); ctx.arc(cx,cy,r,start,end);
+  ctx.strokeStyle='#1c1f1c'; ctx.lineWidth=14; ctx.stroke();
+
+  // Ticks
+  for (let i=0;i<=10;i++){
+    const a = Math.PI + (i/10)*Math.PI;
+    const x1=cx+Math.cos(a)*(r-9), y1=cy+Math.sin(a)*(r-9);
+    const x2=cx+Math.cos(a)*(r+2), y2=cy+Math.sin(a)*(r+2);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle='#2e322e'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  if (score !== null) {
+    // Fill arc
+    const fillEnd = Math.PI + score * Math.PI;
+    const color = score >= 0.6 ? '#ff3b3b' : score >= 0.35 ? '#ffaa00' : '#00ff88';
+    ctx.beginPath(); ctx.arc(cx,cy,r,start,fillEnd);
+    ctx.strokeStyle=color; ctx.lineWidth=14; ctx.lineCap='butt'; ctx.stroke();
+
+    // Needle
+    const a = Math.PI + score*Math.PI;
+    const nx=cx+Math.cos(a)*(r-22), ny=cy+Math.sin(a)*(r-22);
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nx,ny);
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+
+    // Center dot
+    ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2);
+    ctx.fillStyle='#fff'; ctx.fill();
+
+    // Score text
+    ctx.font = '700 26px Courier New';
+    ctx.fillStyle = color;
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText(Math.round(score*100), cx, cy-6);
+
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = '#5a635a';
+    ctx.fillText('/ 100', cx, cy+2);
+  } else {
+    // Placeholder dash
+    ctx.font = '700 22px Courier New';
+    ctx.fillStyle = '#3a3f3a';
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText('—', cx, cy-8);
+  }
+}
+drawGauge(null, null);
+
+/* ── graph canvas ── */
+function drawGraph(nodes, edges) {
+  if (!nodes || nodes.length === 0) return;
+  const cv = document.getElementById('graph');
+  document.getElementById('graph-empty').style.display='none';
+  cv.style.display='block';
+  const W = cv.parentElement.clientWidth - 28;
+  cv.width = W; cv.height = 160;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,W,160);
+
+  const EDGE_COLORS = {'0':'#00ff88','1':'#4da6ff','2':'#ffaa00','3':'#ffaa00','4':'#ff3b3b'};
+  const MOD_COLORS  = {text:'#00ff88',image:'#4da6ff',audio:'#b06aff',video:'#ffaa00',action:'#ff3b3b'};
+
+  // Lay out nodes in a circle
+  const cx=W/2, cy=80, rad=Math.min(cx,cy)-24;
+  const pos={};
+  nodes.forEach((n,i) => {
+    const a = (i/nodes.length)*2*Math.PI - Math.PI/2;
+    pos[n.id]={x:cx+Math.cos(a)*rad, y:cy+Math.sin(a)*rad};
+  });
+
+  // Edges
+  edges.forEach(e => {
+    const p=pos[e.source_id]||pos[e.source], q=pos[e.target_id]||pos[e.target];
+    if (!p||!q) return;
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+    ctx.strokeStyle=EDGE_COLORS[String(e.edge_type)]||'#3a3f3a';
+    ctx.lineWidth=1.2; ctx.globalAlpha=0.7; ctx.stroke(); ctx.globalAlpha=1;
+  });
+
+  // Nodes
+  nodes.forEach(n => {
+    const p=pos[n.id]; if(!p) return;
+    const col=MOD_COLORS[n.modality||n.type]||'#5a635a';
+    ctx.beginPath(); ctx.arc(p.x,p.y,6,0,Math.PI*2);
+    ctx.fillStyle=n.harmful_signal?'#ff3b3b':col;
+    ctx.fill();
+    ctx.strokeStyle='#0b0c0b'; ctx.lineWidth=1.5; ctx.stroke();
+    // label
+    ctx.font='9px Courier New'; ctx.fillStyle='#7a877a';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText((n.modality||n.type||'').slice(0,3).toUpperCase(), p.x, p.y+8);
+  });
+}
+
+/* ── pipeline steps ── */
+function setStep(n) {
+  for(let i=1;i<=6;i++){
+    const el=document.getElementById('ps'+i);
+    el.className='pipe-step'+(i<n?' done':i===n?' active':'');
+  }
+}
+
+/* ── run analysis ── */
+async function runAnalysis() {
+  const btn=document.getElementById('analyze-btn');
+  const spin=document.getElementById('spin');
+  const bstat=document.getElementById('bar-status');
+
+  btn.disabled=true; spin.style.display='block'; setStep(2); bstat.textContent='decomposing…';
+
+  const fd = new FormData();
+  const txt=document.getElementById('txt').value;
+  if(txt) fd.append('text',txt);
+
+  const imgF=document.getElementById('img-file').files[0];
+  if(imgF) fd.append('image',imgF);
+
+  const audF=document.getElementById('aud-file').files[0];
+  if(audF) fd.append('audio',audF);
+
+  setTimeout(()=>{ setStep(3); bstat.textContent='building graph…'; },800);
+  setTimeout(()=>{ setStep(4); bstat.textContent='matching patterns…'; },1600);
+  setTimeout(()=>{ setStep(5); bstat.textContent='scoring…'; },2400);
+
+  try {
+    const resp = await fetch(`${API}/analyze`,{method:'POST',body:fd});
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error||resp.statusText);
+    setStep(6); bstat.textContent='complete';
+    renderResult(data);
+  } catch(e) {
+    bstat.textContent='error: '+e.message;
+    setStep(1);
+  } finally {
+    btn.disabled=false; spin.style.display='none';
+  }
+}
+
+function renderResult(d) {
+  const score = d.harm_score;
+  const verdict = d.verdict;
+  const pct = Math.round(score*100);
+
+  // Gauge
+  drawGauge(score, verdict);
+  const gsdot=document.getElementById('gsdot');
+  const gstxt=document.getElementById('gstxt');
+  gsdot.style.background = verdict==='HARMFUL'?'var(--red)': score>=0.35?'var(--amber)':'var(--green)';
+  gstxt.textContent = verdict;
+  gstxt.style.color  = verdict==='HARMFUL'?'var(--red)': score>=0.35?'var(--amber)':'var(--green)';
+
+  // Category bars — use triggered_elements to infer category scores
+  const catScores={};
+  (d.triggered_elements||[]).forEach(el => {
+    const cat = el.policy_category;
+    if(cat) catScores[cat]=Math.max(catScores[cat]||0, el.confidence||score);
+  });
+  CATS.forEach(c => {
+    const v = catScores[c.key]||0;
+    const bar=document.getElementById('cat-'+c.key);
+    const val=document.getElementById('catv-'+c.key);
+    if(bar){
+      bar.style.width=Math.round(v*100)+'%';
+      bar.style.background=v>=0.6?'var(--red)':v>=0.35?'var(--amber)':'var(--green)';
+    }
+    if(val) val.textContent=v?Math.round(v*100):'—';
+  });
+
+  // Graph
+  drawGraph(d.nodes, d.edges);
+
+  // Evidence rows
+  const ms=d.modality_scores||{};
+  ['text','image','audio'].forEach(m => {
+    const row=document.getElementById('ev-'+m);
+    const sc =document.getElementById('ev-'+m+'-score');
+    if(ms[m]!==undefined){
+      row.classList.add('active');
+      sc.textContent=ms[m];
+      sc.style.color=ms[m]>=0.35?'var(--red)':'var(--green)';
+    } else {
+      row.classList.remove('active');
+      sc.textContent='—';
+    }
+  });
+
+  // Right panel
+  const rScore=document.getElementById('r-score');
+  rScore.innerHTML=`<span class="r-val big ${verdict.toLowerCase()}">${pct}</span> <span style="font-size:13px;color:var(--muted)">/ 100</span>`;
+
+  const rv=document.getElementById('r-verdict');
+  rv.textContent=verdict;
+  rv.className='r-sub '+(verdict==='HARMFUL'?'harmful':verdict==='SAFE'?'safe':'review');
+
+  const rs=document.getElementById('r-status');
+  rs.innerHTML=verdict==='HARMFUL'
+    ?'<span style="color:var(--red)">VIOLATION DETECTED</span>'
+    :'<span style="color:var(--green)">CLEAR</span>';
+
+  // Policies triggered
+  const rp=document.getElementById('r-policies');
+  const pc=d.policy_clause;
+  if(pc && typeof pc==='object'){
+    rp.innerHTML=`<span class="ptag active">${pc.clause_id||''} — ${pc.title||''}</span>`;
+  } else {
+    rp.innerHTML='<span class="r-dash">—</span>';
+  }
+
+  // Evidence summary
+  const re=document.getElementById('r-evidence');
+  const els=d.triggered_elements||[];
+  re.textContent=els.length?`${els.length} element(s) triggered`:'none';
+
+  // Explanation
+  document.getElementById('r-expl').textContent = d.explanation||'No explanation returned.';
+}
+
+function verdict(v) {
+  document.getElementById('bar-status').textContent='operator decision: '+v;
+}
+
+/* init */
+drawGauge(null,null);
+</script>
+</body>
+</html>

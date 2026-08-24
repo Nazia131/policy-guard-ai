@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Model checkpoints & large binary assets
+model/checkpoints/*.pt
+model/checkpoints/*.pth
+harm_pattern_library/library.json
+
+# Dataset (too large for git)
+data/hateful_memes/
+data/synthetic_demo/
+
+# Weights & Biases
+wandb/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Env files
+.env
+*.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+*.tmp
+*.log

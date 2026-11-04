@@ -653,8 +653,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--data_dir",
+        "--data-dir",
+        dest="data_dir",
         type=str,
-        default="data/hateful_memes/hateful_memes/hateful_memes",
+        default="data/hateful_memes",
         help="Hateful Memes dataset root directory.",
     )
     parser.add_argument(
@@ -665,6 +667,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--batch_size",
+        "--batch-size",
+        dest="batch_size",
         type=int,
         default=32,
         help="Graphs per mini-batch (default: 32).",

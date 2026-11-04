@@ -409,7 +409,7 @@ def _run_with_checkpoint(
     import torch
     from torch_geometric.loader import DataLoader
     from model.gat_model import CHEMGraphAttentionNetwork
-    from model.train import _load_samples, _build_dataset, _split_dataset, _compute_metrics
+    from model.train import _load_samples, _compute_metrics
     from encoders.text_encoder import TextEncoder
     from encoders.image_encoder import ImageEncoder
     from PIL import Image
@@ -461,7 +461,7 @@ def _run_with_checkpoint(
             else:
                 other_graphs.append(data)
         except Exception as exc:
-            pass
+            print(f"[CHEM][zero_shot] skipping sample {s.get('id', i)}: {exc}")
         if (i + 1) % 100 == 0:
             print(f"[CHEM][zero_shot]   categorised {i+1}/{len(raw_samples)}")
 
@@ -514,8 +514,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--data_dir",
+        "--data-dir",
+        dest="data_dir",
         type=str,
-        default="data/hateful_memes/hateful_memes/hateful_memes",
+        default="data/hateful_memes",
         help="Hateful Memes dataset root directory.",
     )
     parser.add_argument(

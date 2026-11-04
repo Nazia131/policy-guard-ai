@@ -31,7 +31,6 @@ Public API
 from __future__ import annotations
 
 import json
-import math
 import os
 from typing import Any, Dict, List, Optional
 
@@ -187,9 +186,16 @@ class HarmScorer:
         graph_json = pattern.get("graph")
         if not graph_json:
             return None
+        # The miner serialises with the "links" key; newer networkx defaults to
+        # "edges" and would raise KeyError (silently zeroing every similarity).
+        key = "links" if ("links" in graph_json and "edges" not in graph_json) else "edges"
         try:
-            return json_graph.node_link_graph(graph_json)
-        except Exception:  # pragma: no cover - tolerate odd serialisations
+            try:
+                return json_graph.node_link_graph(graph_json, edges=key)
+            except TypeError:  # networkx < 3.4 has no ``edges`` kwarg (uses "links")
+                return json_graph.node_link_graph(graph_json)
+        except Exception as exc:  # pragma: no cover - tolerate odd serialisations
+            print(f"[CHEM][harm_scorer] WARNING: could not parse pattern graph: {exc}")
             return None
 
     # ------------------------------------------------------------------ #

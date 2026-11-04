@@ -183,7 +183,8 @@ class PatternTagger:
 
         # 6. Harmful text dominates -> harassment / bullying (default harm).
         if harmful_text:
-            return self._resolve(_CAT_HARASSMENT, nodes)
+            carried = _first_carried_category(harmful_text, self._valid_categories)
+            return carried or self._resolve(_CAT_HARASSMENT, nodes)
 
         # 7. Fallback: reuse any policy_category already carried by a node,
         #    otherwise default to harassment/bullying.

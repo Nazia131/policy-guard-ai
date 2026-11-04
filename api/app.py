@@ -102,8 +102,6 @@ class CHEMPipeline:
             # Local imports keep the heavy stack out of module import time.
             from encoders.text_encoder import TextEncoder
             from encoders.image_encoder import ImageEncoder
-            from encoders.audio_encoder import AudioEncoder
-            from encoders.video_encoder import VideoEncoder
             from graph.graph_builder import ContentCompositionGraphBuilder
             from model.harm_scorer import HarmScorer, fuse_modality_scores
             from explainability.shap_explainer import SHAPExplainer
@@ -113,8 +111,22 @@ class CHEMPipeline:
             # Encoders share sub-encoders so models load only once each.
             self.text_encoder = TextEncoder()
             self.image_encoder = ImageEncoder()
-            self.audio_encoder = AudioEncoder(text_encoder=self.text_encoder)
-            self.video_encoder = VideoEncoder(image_encoder=self.image_encoder)
+            # Audio/video need extra heavy deps (whisper, VideoMAE); text and
+            # image must still work without them, so these are optional.
+            try:
+                from encoders.audio_encoder import AudioEncoder
+
+                self.audio_encoder = AudioEncoder(text_encoder=self.text_encoder)
+            except Exception as exc:  # noqa: BLE001
+                self.audio_encoder = None
+                print(f"[CHEM][api] Audio encoder unavailable: {exc}")
+            try:
+                from encoders.video_encoder import VideoEncoder
+
+                self.video_encoder = VideoEncoder(image_encoder=self.image_encoder)
+            except Exception as exc:  # noqa: BLE001
+                self.video_encoder = None
+                print(f"[CHEM][api] Video encoder unavailable: {exc}")
             self.graph_builder = ContentCompositionGraphBuilder()
 
             model_path = os.environ.get(
@@ -195,6 +207,8 @@ class CHEMPipeline:
 
         # --- Audio ---
         if audio_path is not None:
+            if self.audio_encoder is None:
+                raise ValueError("Audio analysis is unavailable (audio encoder failed to load).")
             print("[CHEM][api] Encoding audio...")
             res = self.audio_encoder.encode(audio_path)
             elements.extend(_reindex(res.get("elements", []), "audio", len(elements)))
@@ -202,6 +216,8 @@ class CHEMPipeline:
 
         # --- Video ---
         if video_path is not None:
+            if self.video_encoder is None:
+                raise ValueError("Video analysis is unavailable (video encoder failed to load).")
             print("[CHEM][api] Encoding video...")
             res = self.video_encoder.encode(video_path)
             elements.extend(_reindex(res.get("elements", []), "video", len(elements)))

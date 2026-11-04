@@ -43,7 +43,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from model.checkpoint_io import (
+    build_metadata,
+    describe_architecture,
+    read_checkpoint,
+    save_checkpoint,
+)
 from model.gat_model import CHEMGraphAttentionNetwork
+from utils.provenance import is_synthetic_dir
 
 # Default checkpoint location (created on demand).
 _CHECKPOINT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "checkpoints"))
@@ -53,6 +60,17 @@ _BEST_CHECKPOINT_PATH = os.path.join(_CHECKPOINT_DIR, "best_gat.pt")
 _LEARNING_RATE = 0.005
 _WEIGHT_DECAY = 5e-4
 _EARLY_STOP_PATIENCE = 20
+
+# Seed and description of the train/val/test split, recorded in the checkpoint
+# metadata so a checkpoint states how its splits were produced.
+_SPLIT_SEED = 42
+_SPLIT_SCHEME = (
+    "random 70/15/15 over merged train+dev graphs (graph-level shuffle, "
+    "not stratified)"
+)
+_DEFAULT_LABEL_MAPPING = (
+    "binary label used as provided by the loader: 0 = not hateful, 1 = hateful"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -344,6 +362,8 @@ def train(
     batch_size: int = 32,
     data_dir: Optional[str] = None,
     wandb_project: str = "chem",
+    dataset_name: Optional[str] = None,
+    label_mapping: Optional[str] = None,
 ) -> Optional[str]:
     """Run the full CHEM GAT training + evaluation pipeline.
 
@@ -357,6 +377,15 @@ def train(
         Dataset root forwarded to the Hateful Memes loader.
     wandb_project : str, optional
         Weights & Biases project name (default ``"chem"``).
+    dataset_name : str, optional
+        Name of the dataset actually used, recorded in the checkpoint (e.g.
+        ``"hateful_memes"``, ``"harmeme_v1"``).  Defaults to ``"synthetic_demo"``
+        if ``data_dir`` carries the synthetic-data marker, else
+        ``"hateful_memes"``.
+    label_mapping : str, optional
+        Plain-language description of how dataset labels map to 0 / 1,
+        recorded in the checkpoint.  Required reading for any dataset whose
+        native labels are not already binary.
 
     Returns
     -------
@@ -395,7 +424,7 @@ def train(
         print("[CHEM][train] ERROR: no graphs built; aborting training.")
         return None
 
-    splits = _split_dataset(dataset)
+    splits = _split_dataset(dataset, seed=_SPLIT_SEED)
     print(
         f"[CHEM][train] Split -> train={len(splits['train'])} "
         f"val={len(splits['val'])} test={len(splits['test'])}"
@@ -415,6 +444,37 @@ def train(
     criterion = nn.NLLLoss()
 
     os.makedirs(_CHECKPOINT_DIR, exist_ok=True)
+
+    # --- Provenance stored inside every saved checkpoint. -------------------
+    synthetic = is_synthetic_dir(data_dir)
+    metadata = build_metadata(
+        dataset_name=dataset_name or ("synthetic_demo" if synthetic else "hateful_memes"),
+        data_dir=data_dir,
+        label_mapping=label_mapping or _DEFAULT_LABEL_MAPPING,
+        is_synthetic=synthetic,
+        split_scheme=_SPLIT_SCHEME,
+        split_seed=_SPLIT_SEED,
+        split_counts={k: len(v) for k, v in splits.items()},
+        hyperparameters={
+            "learning_rate": _LEARNING_RATE,
+            "weight_decay": _WEIGHT_DECAY,
+            "early_stop_patience": _EARLY_STOP_PATIENCE,
+            "max_epochs": int(epochs),
+            "batch_size": int(batch_size),
+            "loss": "NLLLoss (unweighted)",
+        },
+        architecture=describe_architecture(model),
+    )
+    print(
+        f"[CHEM][train] Provenance: dataset={metadata['dataset_name']} "
+        f"synthetic={metadata['is_synthetic']}"
+    )
+    if synthetic:
+        print(
+            "[CHEM][train] WARNING: training data is SYNTHETIC demo data. The "
+            "saved checkpoint will be labelled synthetic_only and is not a "
+            "trained moderation model."
+        )
 
     # --- Training loop with early stopping on validation F1. ---------------
     best_val_f1 = -1.0
@@ -446,9 +506,12 @@ def train(
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             epochs_without_improvement = 0
-            torch.save(
-                {"state_dict": model.state_dict(), "val_f1": best_val_f1, "epoch": epoch},
+            save_checkpoint(
                 _BEST_CHECKPOINT_PATH,
+                model.state_dict(),
+                metadata,
+                val_f1=best_val_f1,
+                epoch=epoch,
             )
             print(
                 f"[CHEM][train] new best val_f1={best_val_f1:.4f}; "
@@ -466,8 +529,8 @@ def train(
     # --- Final test-set evaluation using the best checkpoint. --------------
     print("[CHEM][train] Loading best checkpoint for test evaluation ...")
     if os.path.isfile(_BEST_CHECKPOINT_PATH):
-        checkpoint = torch.load(_BEST_CHECKPOINT_PATH, map_location=device)
-        model.load_state_dict(checkpoint["state_dict"])
+        state_dict, _meta = read_checkpoint(_BEST_CHECKPOINT_PATH, device)
+        model.load_state_dict(state_dict)
 
     test_eval = _evaluate(model, test_loader, device)
     test_metrics = test_eval["metrics"]
@@ -593,6 +656,24 @@ def main() -> None:
         default="chem",
         help="Weights & Biases project name.",
     )
+    parser.add_argument(
+        "--dataset_name",
+        "--dataset-name",
+        dest="dataset_name",
+        type=str,
+        default=None,
+        help="Name of the dataset actually used (recorded in the checkpoint), "
+        "e.g. hateful_memes or harmeme_v1.",
+    )
+    parser.add_argument(
+        "--label_mapping",
+        "--label-mapping",
+        dest="label_mapping",
+        type=str,
+        default=None,
+        help="Plain-language description of how dataset labels map to 0/1 "
+        "(recorded in the checkpoint).",
+    )
     args = parser.parse_args()
 
     train(
@@ -600,6 +681,8 @@ def main() -> None:
         batch_size=args.batch_size,
         data_dir=args.data_dir,
         wandb_project=args.wandb_project,
+        dataset_name=args.dataset_name,
+        label_mapping=args.label_mapping,
     )
 
 

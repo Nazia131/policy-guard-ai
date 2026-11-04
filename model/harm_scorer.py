@@ -37,6 +37,14 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
+from model.checkpoint_io import (
+    STATUS_SYNTHETIC,
+    check_architecture,
+    derive_model_status,
+    describe_architecture,
+    read_checkpoint,
+    status_message,
+)
 from model.gat_model import CHEMGraphAttentionNetwork
 from utils.config import get_coefficient, get_policy_clause
 
@@ -75,11 +83,22 @@ class HarmScorer:
         gracefully to a GAT-only score.
     device : str, optional
         Torch device string.  Auto-selected (CUDA if available, else CPU).
+    require_trained : bool, optional
+        Strict mode (default ``False``).  When ``True``, construction raises
+        instead of continuing if no weights could be loaded or the checkpoint
+        was trained on synthetic demo data only.
 
     Attributes
     ----------
     model : CHEMGraphAttentionNetwork
         The loaded, eval-mode GAT.
+    weights_loaded : bool
+        ``True`` only if a checkpoint was found and loaded into ``model``.
+    model_status : str
+        ``"untrained"`` / ``"loaded_unverified"`` / ``"synthetic_only"`` /
+        ``"trained"`` (see :mod:`model.checkpoint_io`).
+    checkpoint_metadata : dict
+        Provenance stored in the checkpoint (empty if none).
     patterns : list[dict]
         The loaded harm-pattern library entries (possibly empty).
     device : torch.device
@@ -91,11 +110,24 @@ class HarmScorer:
         model_path: str,
         library_path: Optional[str] = None,
         device: Optional[str] = None,
+        require_trained: bool = False,
     ) -> None:
         """Load the GAT weights and the harm-pattern library exactly once.
 
-        Inputs: checkpoint path, optional library path, optional device.
-        Outputs: a ready :class:`HarmScorer` with model in eval mode.
+        Inputs: checkpoint path, optional library path, optional device,
+        optional strict mode.
+        Outputs: a ready :class:`HarmScorer` with model in eval mode and an
+        explicit ``model_status``.
+
+        Raises
+        ------
+        FileNotFoundError
+            In strict mode, if no checkpoint exists at ``model_path``.
+        RuntimeError
+            In strict mode, if the checkpoint was trained on synthetic data only.
+        ValueError
+            If the checkpoint records an architecture that does not match the
+            current model.
         """
         self.device = torch.device(
             device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,20 +136,42 @@ class HarmScorer:
         # --- Load the GAT once. --------------------------------------------
         print(f"[CHEM][harm_scorer] Loading GAT weights from: {model_path}")
         self.model = CHEMGraphAttentionNetwork().to(self.device)
+        self.checkpoint_path: Optional[str] = model_path or None
+        self.checkpoint_metadata: Dict[str, Any] = {}
+        self.weights_loaded = False
         if model_path and os.path.isfile(model_path):
-            checkpoint = torch.load(model_path, map_location=self.device)
-            # Accept either a bare state_dict or a wrapped {"state_dict": ...}.
-            state_dict = checkpoint.get("state_dict", checkpoint) if isinstance(
-                checkpoint, dict
-            ) else checkpoint
+            state_dict, metadata = read_checkpoint(model_path, self.device)
+            check_architecture(metadata, describe_architecture(self.model))
             self.model.load_state_dict(state_dict)
+            self.weights_loaded = True
+            self.checkpoint_metadata = metadata
             print("[CHEM][harm_scorer] GAT weights loaded.")
         else:
+            if require_trained:
+                raise FileNotFoundError(
+                    f"No GAT checkpoint at {model_path!r} and strict mode is on "
+                    "(require_trained=True). Train one with `python -m model.train` "
+                    "or point CHEM_MODEL_PATH at an existing checkpoint."
+                )
             print(
                 "[CHEM][harm_scorer] WARNING: checkpoint not found at "
-                f"{model_path!r}; using randomly-initialised GAT."
+                f"{model_path!r}; using randomly-initialised GAT. "
+                "Scores are NOT learned moderation decisions "
+                "(model_status='untrained')."
             )
         self.model.eval()
+
+        self.model_status = derive_model_status(
+            self.weights_loaded, self.checkpoint_metadata
+        )
+        if require_trained and self.model_status == STATUS_SYNTHETIC:
+            raise RuntimeError(
+                "Checkpoint was trained on synthetic demo data only and strict "
+                "mode is on (require_trained=True)."
+            )
+        warning = status_message(self.model_status)
+        if warning:
+            print(f"[CHEM][harm_scorer] MODEL STATUS = {self.model_status}: {warning}")
 
         # --- Load the pattern library once. --------------------------------
         self.library_path = library_path or _DEFAULT_LIBRARY_PATH
@@ -131,6 +185,29 @@ class HarmScorer:
         self.gat_weight = get_coefficient("gat_vs_pattern_weight")
         self.pattern_weight = get_coefficient("pattern_similarity_weight")
         self.final_threshold = get_coefficient("final_harm_threshold")
+
+    def model_info(self) -> Dict[str, Any]:
+        """Return a JSON-serialisable summary of what the GAT is (and is not).
+
+        Returns
+        -------
+        dict
+            ``{"model_status", "weights_loaded", "warning", "checkpoint_path",
+               "dataset_name", "is_synthetic", "val_f1", "epoch",
+               "created_utc"}``; fields the checkpoint did not record are ``None``.
+        """
+        meta = self.checkpoint_metadata or {}
+        return {
+            "model_status": self.model_status,
+            "weights_loaded": self.weights_loaded,
+            "warning": status_message(self.model_status),
+            "checkpoint_path": self.checkpoint_path if self.weights_loaded else None,
+            "dataset_name": meta.get("dataset_name"),
+            "is_synthetic": meta.get("is_synthetic"),
+            "val_f1": meta.get("val_f1"),
+            "epoch": meta.get("epoch"),
+            "created_utc": meta.get("created_utc"),
+        }
 
     # ------------------------------------------------------------------ #
     # Library loading + parsing
@@ -390,7 +467,8 @@ class HarmScorer:
         dict
             ``{"harm_score": float, "verdict": "HARMFUL"|"SAFE",
                "matched_pattern": dict|None, "policy_clause": dict|None,
-               "triggered_elements": list[dict], "attention_weights": dict}``.
+               "triggered_elements": list[dict], "attention_weights": dict,
+               "model_status": str}``.
         """
         print("[CHEM][harm_scorer] Scoring content composition graph ...")
 
@@ -443,6 +521,7 @@ class HarmScorer:
             "policy_clause": policy_clause,
             "triggered_elements": triggered_elements,
             "attention_weights": attention_weights,
+            "model_status": self.model_status,
         }
 
 

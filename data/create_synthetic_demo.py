@@ -31,6 +31,8 @@ import json
 import os
 import random
 
+from utils.provenance import write_synthetic_marker
+
 # ---------------------------------------------------------------------------
 # Sample templates: policy-neutral paraphrases (NOT real hateful content).
 # These are deliberately sanitised to be safe while still exercising the
@@ -184,6 +186,11 @@ def create_synthetic_demo(n_samples: int = 60, out_dir: str = "data/hateful_meme
     _write_jsonl(os.path.join(out_dir, "train.jsonl"), train)
     _write_jsonl(os.path.join(out_dir, "dev.jsonl"), dev)
     _write_jsonl(os.path.join(out_dir, "test.jsonl"), test)
+
+    # Marker so model/train.py can label any checkpoint trained on this
+    # directory as synthetic-only (it must never pass as a trained model).
+    marker = write_synthetic_marker(out_dir)
+    print(f"[CHEM][synthetic] Wrote synthetic-data marker -> {marker}")
 
     print(f"[CHEM][synthetic] Done.  train={len(train)}, dev={len(dev)}, test={len(test)}")
     print(f"[CHEM][synthetic] Layout ready at: {os.path.abspath(out_dir)}")

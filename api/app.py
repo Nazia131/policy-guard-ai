@@ -47,6 +47,11 @@ def _is_exculpatory(text: Optional[str]) -> bool:
     return any(kw in lower for kw in keywords)
 
 
+def _env_flag(name: str) -> bool:
+    """Return True if environment variable ``name`` is set to a truthy value."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 # ---------------------------------------------------------------------------
 # Pipeline singleton: loads every model once and runs end-to-end inference.
 # ---------------------------------------------------------------------------
@@ -89,6 +94,9 @@ class CHEMPipeline:
                                  (default model/checkpoints/best_gat.pt).
             CHEM_LIBRARY_PATH -- path to the harm pattern library JSON
                                  (default harm_pattern_library/library.json).
+            CHEM_REQUIRE_TRAINED_MODEL -- set to 1/true to refuse to start the
+                                 scorer without real trained weights (strict
+                                 mode; /health then reports the load error).
 
         On any failure the error is captured in ``self.load_error`` and
         ``self.loaded`` stays False; ``/analyze`` will then return a 503-style
@@ -125,10 +133,15 @@ class CHEMPipeline:
                 "CHEM_LIBRARY_PATH",
                 os.path.join("harm_pattern_library", "library.json"),
             )
-            self.harm_scorer = HarmScorer(model_path=model_path, library_path=library_path)
+            self.harm_scorer = HarmScorer(
+                model_path=model_path,
+                library_path=library_path,
+                require_trained=_env_flag("CHEM_REQUIRE_TRAINED_MODEL"),
+            )
             self._fuse = fuse_modality_scores
 
-            # Explainers wrap the same trained GAT held by the harm scorer.
+            # Explainers wrap the GAT held by the harm scorer (which may be
+            # untrained -- see ``model_info()`` / the /health endpoint).
             gat = getattr(self.harm_scorer, "model", None)
             self.shap_explainer = SHAPExplainer(gat) if gat is not None else None
             self.gnn_explainer = GNNExplainerWrapper(gat) if gat is not None else None
@@ -140,6 +153,29 @@ class CHEMPipeline:
             self.load_error = f"{type(exc).__name__}: {exc}"
             print(f"[CHEM][api] Model load FAILED: {self.load_error}")
             traceback.print_exc()
+
+    def model_info(self) -> Dict[str, Any]:
+        """Describe the GAT currently in use (never raises).
+
+        Returns
+        -------
+        dict
+            The scorer's :meth:`HarmScorer.model_info`, or a ``"not_loaded"``
+            placeholder if the scorer was not constructed.
+        """
+        if self.harm_scorer is None:
+            return {
+                "model_status": "not_loaded",
+                "weights_loaded": False,
+                "warning": "The harm scorer is not loaded.",
+                "checkpoint_path": None,
+                "dataset_name": None,
+                "is_synthetic": None,
+                "val_f1": None,
+                "epoch": None,
+                "created_utc": None,
+            }
+        return self.harm_scorer.model_info()
 
     # ------------------------------------------------------------------ #
     # Inference
@@ -221,6 +257,8 @@ class CHEMPipeline:
                 "cross_modal_flag": False,
                 "shap_scores": [],
                 "modality_scores": {},
+                "model_status": self.model_info()["model_status"],
+                "model_warning": self.model_info()["warning"],
             }
 
         # --- Graph construction ---
@@ -287,6 +325,8 @@ class CHEMPipeline:
             "cross_modal_flag": bool(fused.get("cross_modal_flag", False)),
             "shap_scores": shap_scores,
             "modality_scores": {k: round(v, 4) for k, v in modality_scores.items()},
+            "model_status": self.model_info()["model_status"],
+            "model_warning": self.model_info()["warning"],
         }
 
 
@@ -386,12 +426,19 @@ def health() -> Dict[str, Any]:
     Returns
     -------
     dict
-        ``{"status": "ok"|"degraded", "models_loaded": bool, "error": str|None}``.
+        ``{"status": "ok"|"degraded", "models_loaded": bool, "error": str|None,
+        "model": {...}}``.  ``status`` is ``"ok"`` only when the models loaded
+        AND the GAT has ``model_status == "trained"``; an untrained, synthetic-
+        only or unverified GAT reports ``"degraded"``.  ``model`` carries the
+        GAT's status, warning and checkpoint provenance.
     """
+    info = pipeline.model_info()
+    healthy = pipeline.loaded and info["model_status"] == "trained"
     return {
-        "status": "ok" if pipeline.loaded else "degraded",
+        "status": "ok" if healthy else "degraded",
         "models_loaded": pipeline.loaded,
         "error": pipeline.load_error,
+        "model": info,
     }
 
 
@@ -412,7 +459,10 @@ async def analyze_endpoint(
     JSONResponse
         ``{nodes, edges, harm_score, verdict, policy_clause, triggered_category,
         triggered_elements, explanation, cross_modal_flag, shap_scores,
-        modality_scores}``.
+        modality_scores, model_status, model_warning}``.  ``model_status`` is
+        ``"trained"`` only for a checkpoint with non-synthetic dataset
+        provenance; otherwise ``model_warning`` explains why scores should not
+        be treated as learned moderation decisions.
     """
     if not pipeline.loaded:
         return JSONResponse(

@@ -206,8 +206,23 @@ python3 -m model.train \
 export CHEM_MODEL_PATH=model/checkpoints/best_gat.pt
 export CHEM_LIBRARY_PATH=harm_pattern_library/library.json
 
+# Optional strict mode: refuse to start the scorer without real trained weights.
+export CHEM_REQUIRE_TRAINED_MODEL=1
+
 uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
+
+**Model status.** If no checkpoint is found, the API still starts but runs a
+randomly initialised GAT. This is now reported explicitly: `/health` returns
+`status: "degraded"` and a `model` block, and every `/analyze` response carries
+`model_status` and `model_warning`. Values: `untrained` (no weights),
+`loaded_unverified` (checkpoint without provenance), `synthetic_only` (trained on
+the synthetic demo data) and `trained` (checkpoint whose metadata names a
+non-synthetic dataset). `trained` describes provenance, not quality; check
+`val_f1` and held-out evaluation. Checkpoints written by `model/train.py` store
+the dataset name, label mapping, split, hyper-parameters, architecture and git
+commit (record the dataset you actually used with `--dataset_name`, and describe
+any label conversion with `--label_mapping`).
 
 Health check:
 

@@ -22,7 +22,6 @@ Run with:
 
 from __future__ import annotations
 
-import base64
 import io
 import os
 import tempfile
@@ -34,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from utils.config import get_coefficient, get_policy_clause, load_policy_config
+from utils.config import get_coefficient, load_policy_config
 
 
 def _is_exculpatory(text: Optional[str]) -> bool:

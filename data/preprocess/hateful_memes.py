@@ -74,10 +74,17 @@ def _resolve_split_file(data_dir: str, split: str) -> str:
             "`python3 data/download_datasets.py --dataset hateful_memes`)."
         )
 
-    for candidate in _SPLIT_FILENAMES[split]:
-        path = os.path.join(abs_root, candidate)
-        if os.path.isfile(path):
-            return path
+    # The download/extract step can leave the files one or two levels down
+    # (e.g. data/hateful_memes/hateful_memes/...), so accept those layouts too.
+    roots = [abs_root]
+    for _ in range(2):
+        roots.append(os.path.join(roots[-1], "hateful_memes"))
+
+    for root in roots:
+        for candidate in _SPLIT_FILENAMES[split]:
+            path = os.path.join(root, candidate)
+            if os.path.isfile(path):
+                return path
 
     raise FileNotFoundError(
         f"No split file for {split!r} found in {abs_root}. "
@@ -141,6 +148,31 @@ def load_hateful_memes(data_dir: str, split: str = "train") -> Iterator[dict[str
             count += 1
 
     _log(f"Yielded {count} samples from '{split}' ({skipped} malformed lines skipped).")
+
+
+#: Default dataset root, relative to the current working directory.
+DEFAULT_DATA_DIR = os.path.join("data", "hateful_memes")
+
+
+def load_samples(
+    split: str = "train", data_dir: str | None = None
+) -> Iterator[dict[str, Any]]:
+    """Convenience wrapper around :func:`load_hateful_memes`.
+
+    Several callers (the library builder, zero-shot evaluation) only know the
+    split name, so ``data_dir`` is optional and falls back to the
+    ``CHEM_DATA_DIR`` environment variable, then to ``data/hateful_memes``.
+
+    Inputs:
+        split: ``"train"``, ``"dev"`` or ``"test"``.
+        data_dir: Optional dataset root directory.
+    Yields:
+        Normalised sample dicts (see :func:`load_hateful_memes`).
+    Raises:
+        FileNotFoundError: If the data directory or split file is missing.
+    """
+    root = data_dir or os.environ.get("CHEM_DATA_DIR") or DEFAULT_DATA_DIR
+    yield from load_hateful_memes(root, split)
 
 
 class HatefulMemesDataset:

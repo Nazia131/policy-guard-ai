@@ -332,7 +332,7 @@ def _write_json(document: Dict[str, Any], path: str) -> None:
 # Command-line entry point
 # --------------------------------------------------------------------------- #
 def _default_loader(
-    dataset: str, split: str, limit: Optional[int]
+    dataset: str, split: str, limit: Optional[int], data_dir: Optional[str] = None
 ) -> Callable[[], Iterable[Sample]]:
     """Build a loader that yields encoded samples from a supported dataset.
 
@@ -349,6 +349,8 @@ def _default_loader(
         Dataset split to load (e.g. ``"train"``).
     limit : int, optional
         Optional cap on the number of samples.
+    data_dir : str, optional
+        Dataset root directory (defaults to ``data/hateful_memes``).
 
     Returns
     -------
@@ -385,7 +387,7 @@ def _default_loader(
         image_encoder = ImageEncoder()
 
         count = 0
-        for raw in load_samples(split=split):
+        for raw in load_samples(split=split, data_dir=data_dir):
             if limit is not None and count >= limit:
                 break
             elements: List[Dict[str, Any]] = []
@@ -448,8 +450,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument(
         "--output",
+        "--out",
+        dest="output",
         default=_DEFAULT_LIBRARY_PATH,
         help="Output path for the library JSON.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        "--data_dir",
+        dest="data_dir",
+        default=None,
+        help="Dataset root directory (default: data/hateful_memes).",
     )
     parser.add_argument(
         "--config",
@@ -460,7 +471,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     print("[CHEM][library_builder] Starting harm-pattern library build.")
     try:
-        loader = _default_loader(args.dataset, args.split, args.limit)
+        loader = _default_loader(args.dataset, args.split, args.limit, args.data_dir)
         build_library(
             loader=loader,
             min_support=args.min_support,

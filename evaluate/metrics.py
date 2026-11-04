@@ -238,3 +238,91 @@ def pretty_print(metrics: Dict[str, Any]) -> str:
     table = "\n".join(lines)
     print(table)
     return table
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Evaluate a trained GAT checkpoint on the held-out test split.
+
+    Mirrors the split used by ``model.train`` (70/15/15, seed 42) so the
+    reported numbers are on the same test set as the training run.
+
+    Parameters
+    ----------
+    argv : sequence of str, optional
+        Argument vector (defaults to ``sys.argv``).
+
+    Returns
+    -------
+    int
+        Process exit code (``0`` on success, ``1`` on handled failure).
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate a CHEM GAT checkpoint on the held-out test split.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        default="model/checkpoints/best_gat.pt",
+        help="Path to the saved GAT checkpoint.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        "--data_dir",
+        dest="data_dir",
+        default=None,
+        help="Hateful Memes dataset root (default: data/hateful_memes).",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Override decision threshold (default: config final_harm_threshold).",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        import torch
+        from torch_geometric.loader import DataLoader
+
+        from encoders.image_encoder import ImageEncoder
+        from encoders.text_encoder import TextEncoder
+        from model.gat_model import CHEMGraphAttentionNetwork
+        from model.train import _build_dataset, _load_samples, _split_dataset
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = CHEMGraphAttentionNetwork().to(device)
+        ckpt = torch.load(args.checkpoint, map_location=device)
+        model.load_state_dict(ckpt.get("state_dict", ckpt))
+        model.eval()
+
+        samples = _load_samples("train", args.data_dir) + _load_samples(
+            "dev", args.data_dir
+        )
+        graphs = _build_dataset(
+            samples, TextEncoder(device=str(device)), ImageEncoder(device=str(device))
+        )
+        test_graphs = _split_dataset(graphs)["test"]
+        if not test_graphs:
+            print("[CHEM][metrics] No test graphs available; nothing to evaluate.")
+            return 1
+
+        y_true: List[int] = []
+        y_prob: List[float] = []
+        with torch.no_grad():
+            for batch in DataLoader(test_graphs, batch_size=32, shuffle=False):
+                batch = batch.to(device)
+                log_probs = model(batch.x.float(), batch.edge_index, batch.batch)
+                y_prob.extend(torch.exp(log_probs)[:, 1].cpu().tolist())
+                y_true.extend(batch.y.view(-1).long().cpu().tolist())
+    except Exception as exc:
+        print(f"[CHEM][metrics] Evaluation failed: {exc}")
+        return 1
+
+    print(f"[CHEM][metrics] Test set: {len(y_true)} samples")
+    pretty_print(compute_metrics(y_true, y_prob, threshold=args.threshold))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

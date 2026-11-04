@@ -40,7 +40,6 @@ import os
 from typing import Any, Dict, List, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from model.gat_model import CHEMGraphAttentionNetwork
@@ -97,11 +96,12 @@ def _load_samples(split: str, data_dir: Optional[str]) -> List[Dict[str, Any]]:
         return []
 
     try:
-        # load_hateful_memes(data_dir, split) — data_dir first, then split name.
-        try:
+        if data_dir is None:
+            # Fall back to the CHEM_DATA_DIR env var / data/hateful_memes default.
+            samples = hateful_memes.load_samples(split)
+        else:
+            # load_hateful_memes(data_dir, split) — data_dir first, then split name.
             samples = loader(data_dir, split)  # type: ignore[misc]
-        except TypeError:
-            samples = loader(split)  # type: ignore[misc]
         return list(samples)
     except Exception as exc:  # pragma: no cover
         print(f"[CHEM][train] WARNING: loader failed for split={split!r}: {exc}")
@@ -151,12 +151,8 @@ def _build_dataset(
                     if not isinstance(img_field, str):
                         image = img_field
                     else:
-                        # img paths in JSONL are relative (e.g. "img/42953.png");
-                        # resolve against data_dir when provided.
-                        img_path = img_field
-                        if data_dir and not os.path.isabs(img_field):
-                            img_path = os.path.join(data_dir, img_field)
-                        image = Image.open(img_path).convert("RGB")
+                        # The loader already resolves ``img`` to an absolute path.
+                        image = Image.open(img_field).convert("RGB")
                     image_out = image_encoder.encode(image)
                     elements.extend(image_out.get("elements", []))
                 except Exception as img_exc:  # pragma: no cover
@@ -580,15 +576,19 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="Train the CHEM GAT harm classifier.")
     parser.add_argument("--epochs", type=int, default=100, help="Maximum epochs.")
-    parser.add_argument("--batch_size", type=int, default=32, help="Graphs per batch.")
+    parser.add_argument("--batch_size", "--batch-size", dest="batch_size", type=int, default=32, help="Graphs per batch.")
     parser.add_argument(
         "--data_dir",
+        "--data-dir",
+        dest="data_dir",
         type=str,
         default=None,
         help="Hateful Memes dataset root (forwarded to the loader).",
     )
     parser.add_argument(
         "--wandb_project",
+        "--wandb-project",
+        dest="wandb_project",
         type=str,
         default="chem",
         help="Weights & Biases project name.",

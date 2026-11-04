@@ -28,7 +28,7 @@ mining.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 import networkx as nx
 from networkx.algorithms import isomorphism as iso

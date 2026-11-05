@@ -152,6 +152,22 @@ data/hateful_memes/
 └── test.jsonl
 ```
 
+### HarMeme via MemeLens (open alternative when Hateful Memes is unavailable)
+
+Download only the `Harmful_Covid_en__HarMeme` folder of
+[QCRI/MemeLens](https://huggingface.co/datasets/QCRI/MemeLens) (CC-BY-NC-4.0,
+a few thousand memes, not the full 29 GB repo), then convert it:
+
+```bash
+pip install huggingface_hub pyarrow pandas
+python3 -c "from huggingface_hub import snapshot_download as d; d('QCRI/MemeLens', repo_type='dataset', allow_patterns=['Harmful_Covid_en__HarMeme/*'], local_dir='memelens_harmeme')"
+python3 -m data.prepare_harmeme --src memelens_harmeme/Harmful_Covid_en__HarMeme --out-dir data/hateful_memes
+```
+
+The three-level label is collapsed to binary: `partially-harmful` and
+`very-harmful` become 1 (about 35 % positive). Pass `--positive very` to treat
+only `very-harmful` as positive. Cite MemeLens and HarMeme if you use it.
+
 ### UCF-Crime (video anomaly evaluation)
 
 UCF-Crime is hosted on Kaggle and must be downloaded manually:

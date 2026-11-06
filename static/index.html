@@ -1,234 +1,316 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dusk">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="color-scheme" content="dark"/>
 <title>CHEM — Multimodal Policy Analyzer</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
+/* ── DESIGN TOKENS ──────────────────────────────────────────────
+   Every colour on the page (and in the canvases) comes from here.
+   Change these values to re-theme the whole interface. */
 :root{
-  --bg:       #0b0c0b;
-  --s1:       #111311;
-  --s2:       #161816;
-  --s3:       #1c1f1c;
-  --border:   #242724;
-  --border2:  #2e322e;
-  --green:    #00ff88;
-  --green2:   #00cc6a;
-  --amber:    #ffaa00;
-  --red:      #ff3b3b;
-  --blue:     #4da6ff;
-  --purple:   #b06aff;
-  --text:     #c8cec8;
-  --muted:    #5a635a;
-  --muted2:   #3a3f3a;
-  --label:    #7a877a;
-  --mono: 'Courier New',Courier,monospace;
-  --gap: 1px;
+  color-scheme:dark;
+
+  /* surfaces: deep navy ink, three steps up */
+  --bg:       #0c1022;
+  --panel:    #141934;
+  --panel-2:  #1a2042;
+  --panel-3:  #232a55;
+  --line:     #272e5a;
+  --line-2:   #38407a;
+
+  /* text */
+  --text:     #e9ebfa;
+  --text-2:   #b0b6dc;
+  --muted:    #8a91bc;
+
+  /* interface accent (periwinkle) */
+  --accent:      #9aa8ff;
+  --accent-ink:  #0c1030;
+  --accent-soft: rgba(154,168,255,.12);
+
+  /* signals */
+  --ok:    #7ee3b8;   /* safe / clear   */
+  --warn:  #f7cb7e;   /* review / elevated */
+  --bad:   #ff8097;   /* harmful        */
+  --sky:   #7ec6ff;
+  --orchid:#d6a6ff;
+  --ok-soft:   rgba(126,227,184,.12);
+  --warn-soft: rgba(247,203,126,.12);
+  --bad-soft:  rgba(255,128,151,.13);
+
+  /* type */
+  --display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
+  --sans:"Segoe UI Variable Text","Segoe UI",ui-sans-serif,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+
+  /* shape */
+  --r-panel:18px;
+  --r-ctl:12px;
 }
 
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.5;overflow:hidden}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+button,textarea,input{font:inherit;color:inherit}
+button:focus-visible,textarea:focus-visible,input:focus-visible,.upload-btn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ── LAYOUT ── */
 .shell{display:grid;grid-template-rows:auto auto 1fr auto;height:100vh}
 
 /* ── HEADER ── */
 header{
-  display:flex;align-items:center;gap:24px;
-  padding:0 20px;height:44px;
-  background:var(--s1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;
+  padding:0 24px;height:60px;
+  border-bottom:1px solid var(--line);
   flex-shrink:0;
 }
-.brand{display:flex;align-items:center;gap:8px;color:var(--green);font-weight:700;font-size:11px;letter-spacing:.12em;white-space:nowrap}
-.brand-dot{width:7px;height:7px;background:var(--green);border-radius:50%;box-shadow:0 0 6px var(--green)}
-.status-pill{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-left:auto}
-.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
-.status-dot.online{background:var(--green);box-shadow:0 0 5px var(--green)}
-.status-dot.err{background:var(--red)}
-.hdr-btn{background:none;border:1px solid var(--border2);color:var(--label);font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:3px 10px;cursor:pointer;transition:border-color .15s,color .15s}
-.hdr-btn:hover{border-color:var(--green);color:var(--green)}
+.brand{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.brand-mark{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.03em;color:var(--text)}
+.brand-sub{font-size:13px;color:var(--muted)}
+.status-pill{
+  display:flex;align-items:center;gap:8px;margin-left:auto;
+  padding:6px 14px;border:1px solid var(--line);border-radius:999px;
+  background:var(--panel);font-size:12px;color:var(--text-2);
+}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.status-dot.online{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.status-dot.err{background:var(--bad)}
+.hdr-btn{
+  background:transparent;border:1px solid var(--line);border-radius:var(--r-ctl);
+  color:var(--text-2);padding:7px 16px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.hdr-btn:hover{border-color:var(--accent);color:var(--text);background:var(--accent-soft)}
 
 /* ── PIPELINE ── */
 .pipeline{
   display:flex;align-items:center;
-  padding:0 20px;height:36px;
-  background:var(--s1);border-bottom:1px solid var(--border);
-  gap:0;overflow-x:auto;flex-shrink:0;
+  padding:0 24px;height:52px;
+  border-bottom:1px solid var(--line);
+  overflow-x:auto;flex-shrink:0;
 }
 .pipe-step{
-  display:flex;align-items:center;gap:6px;
-  font-size:10px;letter-spacing:.08em;color:var(--muted);
-  white-space:nowrap;padding:0 12px 0 4px;
-  cursor:default;user-select:none;
+  display:flex;align-items:center;gap:10px;
+  font-size:12.5px;color:var(--muted);
+  white-space:nowrap;cursor:default;user-select:none;
+  transition:color .2s;
 }
-.pipe-step.active{color:var(--green)}
-.pipe-step.done{color:var(--green2)}
 .pipe-num{
-  width:16px;height:16px;border:1px solid currentColor;
+  width:24px;height:24px;border-radius:50%;
+  border:1px solid var(--line-2);
   display:flex;align-items:center;justify-content:center;
-  font-size:9px;flex-shrink:0;
+  font-size:11px;font-weight:600;flex-shrink:0;
+  transition:background .2s,border-color .2s,color .2s;
 }
-.pipe-arrow{color:var(--muted2);font-size:10px;padding-right:4px}
+.pipe-step.active{color:var(--text)}
+.pipe-step.active .pipe-num{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pipe-step.done{color:var(--text-2)}
+.pipe-step.done .pipe-num{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.pipe-arrow{width:34px;height:1px;background:var(--line);margin:0 14px;flex-shrink:0}
 
 /* ── MAIN 3-COL ── */
 .cols{
   display:grid;
   grid-template-columns:280px 1fr 240px;
-  gap:var(--gap);
-  background:var(--border);
-  overflow:hidden;
+  gap:16px;padding:16px 24px;
+  overflow:hidden;min-height:0;
 }
-.col{background:var(--bg);overflow-y:auto;display:flex;flex-direction:column}
-.col::-webkit-scrollbar{width:3px}
-.col::-webkit-scrollbar-track{background:var(--bg)}
-.col::-webkit-scrollbar-thumb{background:var(--border2)}
+.col{
+  background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-panel);
+  overflow-y:auto;display:flex;flex-direction:column;min-height:0;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent;
+}
+.col::-webkit-scrollbar,.mid-inner::-webkit-scrollbar{width:6px}
+.col::-webkit-scrollbar-thumb,.mid-inner::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
 
 /* ── SECTION HEADERS ── */
 .sec-hdr{
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 14px;font-size:10px;letter-spacing:.1em;
-  color:var(--label);border-bottom:1px solid var(--border);
-  background:var(--s1);flex-shrink:0;
+  padding:18px 18px 8px;flex-shrink:0;
 }
-.sec-hdr .tag{color:var(--text);font-size:10px}
-.sec-tri{color:var(--green);margin-right:6px}
+.sec-title{font-weight:600;font-size:15px;color:var(--text)}
+.sec-hdr .tag{font-size:12px;color:var(--muted)}
+.block-title{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:12px}
 
 /* ── LEFT COL ── */
-.input-block{padding:12px 14px;border-bottom:1px solid var(--border)}
-.input-label{font-size:10px;color:var(--label);letter-spacing:.08em;margin-bottom:6px;display:flex;align-items:center;gap:5px}
-.input-label .marker{color:var(--green)}
+.input-block{padding:14px 18px;border-bottom:1px solid var(--line)}
+.input-label{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:8px}
 textarea{
-  width:100%;background:var(--s2);border:1px solid var(--border2);
-  color:var(--text);font-family:var(--mono);font-size:11px;
-  padding:8px;resize:vertical;min-height:72px;outline:none;
-  transition:border-color .15s;
+  width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-ctl);
+  color:var(--text);padding:10px 12px;resize:vertical;min-height:84px;outline:none;
+  transition:border-color .15s,box-shadow .15s;
 }
-textarea:focus{border-color:var(--green)}
-.char-count{text-align:right;font-size:10px;color:var(--muted);margin-top:4px}
+textarea::placeholder{color:var(--muted)}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.char-count{text-align:right;font-size:11.5px;color:var(--muted);margin-top:6px}
 
 .upload-btn{
   display:flex;align-items:center;justify-content:space-between;
-  width:100%;background:var(--s2);border:1px solid var(--border2);
-  color:var(--label);font-family:var(--mono);font-size:11px;
-  padding:7px 10px;cursor:pointer;transition:border-color .15s,color .15s;
+  width:100%;background:var(--panel-2);border:1px dashed var(--line-2);border-radius:var(--r-ctl);
+  color:var(--text-2);padding:11px 14px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
   position:relative;overflow:hidden;
 }
-.upload-btn:hover{border-color:var(--green);color:var(--green)}
+.upload-btn:hover{border-color:var(--accent);color:var(--text);background:var(--accent-soft)}
 .upload-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
-.upload-btn .fn{font-size:10px;color:var(--green2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.upload-sub{margin-top:6px}
+.up-action{color:var(--accent);font-weight:600}
+.fn{font-size:12px;color:var(--ok);margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn:empty{display:none}
 .rec-btn{
-  display:flex;align-items:center;gap:6px;margin-top:6px;
-  background:var(--s2);border:1px solid var(--border2);
-  color:var(--muted);font-family:var(--mono);font-size:11px;
-  padding:6px 10px;cursor:pointer;transition:border-color .15s,color .15s;width:100%;
+  display:flex;align-items:center;gap:10px;margin-top:8px;width:100%;
+  background:transparent;border:1px solid var(--line);border-radius:var(--r-ctl);
+  color:var(--text-2);padding:9px 14px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
 }
-.rec-btn:hover{border-color:var(--amber);color:var(--amber)}
-.rec-dot{width:6px;height:6px;border-radius:50%;background:var(--red)}
-.coming{color:var(--muted2);font-size:11px;padding:7px 10px;border:1px solid var(--muted2);display:flex;align-items:center;justify-content:space-between}
+.rec-btn:hover{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--bad)}
+.coming{
+  color:var(--muted);padding:10px 14px;border:1px dashed var(--line);border-radius:var(--r-ctl);
+  display:flex;align-items:center;justify-content:space-between;
+}
 
-.policies-block{padding:12px 14px;flex:1}
-.policy-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.policy-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text);cursor:pointer}
-.policy-item input[type=checkbox]{accent-color:var(--green);width:12px;height:12px;cursor:pointer}
-.policy-item.dim{color:var(--muted)}
+.policies-block{padding:16px 18px;flex:1}
+.policy-list{display:flex;flex-direction:column;gap:10px}
+.policy-item{display:flex;align-items:center;gap:10px;color:var(--text);cursor:pointer}
+.policy-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
 
-.img-preview{width:100%;max-height:120px;object-fit:contain;display:none;margin-top:8px;border:1px solid var(--border2)}
+.img-preview{width:100%;max-height:140px;object-fit:contain;display:none;margin-top:10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--panel-2)}
 
 /* ── MIDDLE COL ── */
-.gauge-wrap{padding:16px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:10px}
-.gauge-label{font-size:10px;letter-spacing:.1em;color:var(--label)}
+.mid-inner{display:flex;flex-direction:column;overflow-y:auto;height:100%;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+
+/* the one decorative moment: a soft glow behind the gauge */
+.gauge-wrap{
+  padding:22px 18px 18px;border-bottom:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  background:radial-gradient(120% 90% at 50% 0%,rgba(154,168,255,.13),transparent 62%);
+  border-radius:var(--r-panel) var(--r-panel) 0 0;
+}
+.gauge-label{font-size:12.5px;font-weight:600;color:var(--text-2)}
 canvas#gauge{display:block}
-.gauge-status{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.gauge-status .gsdot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.gauge-status{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.gauge-status .gsdot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+#gstxt{font-weight:600}
 
-.cats-block{padding:12px 14px;border-bottom:1px solid var(--border)}
-.cat-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:11px}
-.cat-name{width:72px;color:var(--label);flex-shrink:0}
-.cat-bar-bg{flex:1;height:6px;background:var(--s3)}
-.cat-bar-fill{height:100%;width:0%;transition:width .6s ease;background:var(--green)}
-.cat-val{width:24px;text-align:right;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.cats-block{padding:16px 18px;border-bottom:1px solid var(--line)}
+.cat-row{display:grid;grid-template-columns:84px 1fr 28px;align-items:center;gap:12px;margin-bottom:11px;font-size:12.5px}
+.cat-row:last-child{margin-bottom:0}
+.cat-name{color:var(--text-2)}
+.cat-bar-bg{height:8px;background:var(--panel-3);border-radius:999px;overflow:hidden}
+.cat-bar-fill{height:100%;width:0%;border-radius:999px;transition:width .6s cubic-bezier(.2,.7,.2,1),background .3s;background:var(--ok)}
+.cat-val{text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 
-.graph-block{padding:12px 14px;border-bottom:1px solid var(--border);flex:1;display:flex;flex-direction:column}
-canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-height:140px;width:100%}
-.graph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;color:var(--muted);font-size:10px;letter-spacing:.08em;min-height:140px;border:1px solid var(--border);background:var(--s1)}
-.graph-empty svg{opacity:.3}
-.legend{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
-.leg-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)}
-.leg-line{width:18px;height:2px}
+.graph-block{padding:16px 18px;border-bottom:1px solid var(--line);flex:1;display:flex;flex-direction:column}
+canvas#graph{background:var(--panel-2);border:1px solid var(--line);border-radius:14px;min-height:140px;max-width:100%}
+.graph-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;
+  color:var(--muted);text-align:center;padding:0 16px;
+  min-height:140px;border:1px dashed var(--line-2);border-radius:14px;background:var(--panel-2);
+}
+.graph-empty svg{color:var(--line-2)}
+.legend{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap}
+.leg-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)}
+.leg-line{width:18px;height:3px;border-radius:2px}
 
-.evidence-block{padding:12px 14px}
+.evidence-block{padding:16px 18px}
 .evidence-row{
   display:flex;align-items:center;justify-content:space-between;
-  padding:7px 8px;border:1px solid var(--border);margin-bottom:4px;
-  font-size:11px;cursor:pointer;transition:border-color .15s;background:var(--s1);
+  padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);margin-bottom:8px;
+  background:var(--panel-2);transition:border-color .15s,background .15s;
 }
-.evidence-row:hover{border-color:var(--green2)}
-.evidence-row.active{border-color:var(--green);background:var(--s2)}
-.ev-left{display:flex;align-items:center;gap:8px}
-.ev-badge{width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--green);border:1px solid var(--green);flex-shrink:0}
-.ev-score{font-size:10px;color:var(--muted)}
-.ev-arrow{color:var(--muted2);font-size:10px}
-.ev-row-special{border-color:var(--green2);background:rgba(0,255,136,.04)}
-.ev-dot-green{color:var(--green);margin-right:4px}
+.evidence-row:last-child{margin-bottom:0}
+.evidence-row:hover{border-color:var(--line-2)}
+.evidence-row.active{border-color:rgba(154,168,255,.55);background:var(--accent-soft)}
+.ev-left{display:flex;align-items:center;gap:10px}
+.ev-badge{width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);flex-shrink:0}
+.ev-score{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ev-row-special{border-color:rgba(154,168,255,.35)}
+.ev-dot{color:var(--accent);width:24px;text-align:center}
 
 /* ── RIGHT COL ── */
-.right-block{padding:12px 14px;border-bottom:1px solid var(--border)}
-.r-label{font-size:10px;letter-spacing:.1em;color:var(--label);margin-bottom:6px}
-.r-val{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
-.r-val.big{font-size:22px;font-weight:700;color:var(--text)}
-.r-val.harmful{color:var(--red)}
-.r-val.safe{color:var(--green)}
-.r-val.review{color:var(--amber)}
-.r-dash{color:var(--muted2)}
-.r-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.right-block{padding:16px 18px;border-bottom:1px solid var(--line)}
+.r-label{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:8px}
+.r-val{font-size:14px;color:var(--text);font-variant-numeric:tabular-nums}
+.r-val.big{font-family:var(--display);font-size:46px;font-weight:700;line-height:1;color:var(--text)}
+.r-val.harmful{color:var(--bad)}
+.r-val.safe{color:var(--ok)}
+.r-val.review{color:var(--warn)}
+.r-dash{color:var(--line-2)}
+.r-val.big .r-dash{font-size:30px}
+.r-sub{font-size:12.5px;font-weight:600;color:var(--muted);margin-top:6px}
+.r-sub.harmful{color:var(--bad)}
+.r-sub.safe{color:var(--ok)}
+.r-sub.review{color:var(--warn)}
+.r-note{font-size:12.5px;color:var(--text-2)}
 
-.policy-triggered-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
-.ptag{font-size:10px;padding:2px 6px;border:1px solid var(--border2);color:var(--label);display:inline-block}
-.ptag.active{border-color:var(--red);color:var(--red);background:rgba(255,59,59,.06)}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip.bad{color:var(--bad);background:var(--bad-soft)}
+.chip.ok{color:var(--ok);background:var(--ok-soft)}
 
-.explanation-block{padding:12px 14px;flex:1}
-.expl-text{font-size:11px;color:var(--muted);line-height:1.7}
+.policy-triggered-list{display:flex;flex-direction:column;gap:6px}
+.ptag{font-size:12px;padding:5px 12px;border:1px solid var(--line-2);border-radius:999px;color:var(--text-2);display:inline-block;width:fit-content}
+.ptag.active{border-color:rgba(255,128,151,.5);color:var(--bad);background:var(--bad-soft)}
+.ptag b{font-weight:700;margin-right:4px}
+
+.explanation-block{padding:16px 18px;flex:1}
+.expl-text{font-size:13px;color:var(--text-2);line-height:1.7}
 
 /* ── BOTTOM BAR ── */
 .bottom-bar{
   display:grid;grid-template-columns:280px 1fr 240px;
-  gap:var(--gap);background:var(--border);
-  border-top:1px solid var(--border);flex-shrink:0;
+  gap:16px;padding:0 24px 16px;flex-shrink:0;
 }
-.bar-left,.bar-mid,.bar-right{background:var(--s1);padding:10px 14px;display:flex;align-items:center;gap:8px}
-.bar-mid{justify-content:center}
-.bar-right{justify-content:flex-end;gap:8px}
+.bar-left,.bar-mid,.bar-right{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-panel);
+  padding:12px 14px;display:flex;align-items:center;gap:10px;
+}
+.bar-mid{justify-content:center;font-size:12.5px;color:var(--muted)}
+.bar-right{justify-content:flex-end}
 
 .btn-analyze{
-  flex:1;background:transparent;border:1px solid var(--green);
-  color:var(--green);font-family:var(--mono);font-size:12px;
-  letter-spacing:.1em;padding:9px;cursor:pointer;
-  transition:background .15s,color .15s;
+  flex:1;background:var(--accent);border:1px solid var(--accent);border-radius:var(--r-ctl);
+  color:var(--accent-ink);font-size:14px;font-weight:700;
+  padding:10px;cursor:pointer;
+  transition:filter .15s,transform .1s;
 }
-.btn-analyze:hover{background:var(--green);color:var(--bg)}
-.btn-analyze:disabled{opacity:.4;cursor:not-allowed}
+.btn-analyze:hover{filter:brightness(1.1)}
+.btn-analyze:active{transform:translateY(1px)}
+.btn-analyze:disabled{opacity:.45;cursor:not-allowed;filter:none;transform:none}
 
 .btn-verdict{
-  background:transparent;font-family:var(--mono);font-size:11px;
-  letter-spacing:.08em;padding:7px 14px;cursor:pointer;
-  transition:background .15s,color .15s;border:1px solid;
+  background:transparent;font-weight:600;border-radius:10px;
+  padding:8px 14px;cursor:pointer;border:1px solid;
+  transition:background .15s,color .15s;
 }
-.btn-allow {border-color:var(--green); color:var(--green)}
-.btn-allow:hover{background:var(--green);color:var(--bg)}
-.btn-review{border-color:var(--amber);color:var(--amber)}
-.btn-review:hover{background:var(--amber);color:var(--bg)}
-.btn-block {border-color:var(--red);  color:var(--red)}
-.btn-block:hover{background:var(--red);color:#fff}
+.btn-allow {border-color:rgba(126,227,184,.45);color:var(--ok);  background:var(--ok-soft)}
+.btn-allow:hover{background:var(--ok);color:var(--accent-ink)}
+.btn-review{border-color:rgba(247,203,126,.45);color:var(--warn);background:var(--warn-soft)}
+.btn-review:hover{background:var(--warn);color:var(--accent-ink)}
+.btn-block {border-color:rgba(255,128,151,.45);color:var(--bad); background:var(--bad-soft)}
+.btn-block:hover{background:var(--bad);color:var(--accent-ink)}
 
-.spinner{display:none;width:14px;height:14px;border:2px solid rgba(0,255,136,.2);border-top-color:var(--green);border-radius:50%;animation:spin .6s linear infinite}
+.spinner{display:none;width:16px;height:16px;border:2px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* scrollbar for middle col */
-.mid-inner{display:flex;flex-direction:column;overflow-y:auto;height:100%}
-.mid-inner::-webkit-scrollbar{width:3px}
-.mid-inner::-webkit-scrollbar-thumb{background:var(--border2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* narrow screens: stack the three columns */
+@media (max-width:980px){
+  html,body{overflow:auto;height:auto}
+  .shell{display:block;height:auto}
+  header{flex-wrap:wrap;height:auto;padding:12px 16px}
+  .status-pill{margin-left:0}
+  .pipeline{padding:0 16px}
+  .cols{grid-template-columns:1fr;padding:16px;overflow:visible}
+  .col,.mid-inner{overflow:visible;height:auto}
+  .bottom-bar{grid-template-columns:1fr;padding:0 16px 16px;position:sticky;bottom:0;background:var(--bg)}
+  .bar-right{justify-content:flex-start}
+}
 </style>
 </head>
 <body>
@@ -238,11 +320,12 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 <header>
   <div class="brand">
     <div class="brand-dot"></div>
-    MULTIMODAL POLICY ANALYZER
+    <span class="brand-mark">CHEM</span>
+    <span class="brand-sub">Multimodal Policy Analyzer</span>
   </div>
   <div class="status-pill">
     <div class="status-dot" id="sdot"></div>
-    <span id="stxt">offline — start app.py</span>
+    <span id="stxt">Offline. Start the server with uvicorn.</span>
   </div>
   <button class="hdr-btn">History</button>
   <button class="hdr-btn">Settings</button>
@@ -251,15 +334,15 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 <!-- PIPELINE -->
 <div class="pipeline">
   <div class="pipe-step active" id="ps1"><div class="pipe-num">1</div>Input</div>
-  <div class="pipe-arrow">——</div>
+  <div class="pipe-arrow"></div>
   <div class="pipe-step" id="ps2"><div class="pipe-num">2</div>Decompose</div>
-  <div class="pipe-arrow">——</div>
-  <div class="pipe-step" id="ps3"><div class="pipe-num">3</div>Build Graph</div>
-  <div class="pipe-arrow">——</div>
+  <div class="pipe-arrow"></div>
+  <div class="pipe-step" id="ps3"><div class="pipe-num">3</div>Build graph</div>
+  <div class="pipe-arrow"></div>
   <div class="pipe-step" id="ps4"><div class="pipe-num">4</div>Match</div>
-  <div class="pipe-arrow">——</div>
+  <div class="pipe-arrow"></div>
   <div class="pipe-step" id="ps5"><div class="pipe-num">5</div>Score</div>
-  <div class="pipe-arrow">——</div>
+  <div class="pipe-arrow"></div>
   <div class="pipe-step" id="ps6"><div class="pipe-num">6</div>Explain</div>
 </div>
 
@@ -269,50 +352,50 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
   <!-- LEFT: INPUTS -->
   <div class="col">
     <div class="sec-hdr">
-      <span><span class="sec-tri">►</span>INPUTS</span>
+      <span class="sec-title">Inputs</span>
       <span class="tag">4 modalities</span>
     </div>
 
     <!-- Text -->
     <div class="input-block">
-      <div class="input-label"><span class="marker">►</span>Text</div>
-      <textarea id="txt" placeholder="Enter text, caption or speech…" oninput="document.getElementById('cc').textContent=this.value.length+' chars'"></textarea>
-      <div class="char-count" id="cc">0 chars</div>
+      <div class="input-label">Text</div>
+      <textarea id="txt" placeholder="Enter text, caption or speech…" oninput="document.getElementById('cc').textContent=this.value.length+' characters'"></textarea>
+      <div class="char-count" id="cc">0 characters</div>
     </div>
 
     <!-- Image -->
     <div class="input-block">
-      <div class="input-label"><span class="marker">►</span>Image</div>
+      <div class="input-label">Image</div>
       <label class="upload-btn">
-        <span>[ Upload ]</span><span>▸</span>
+        <span>Choose an image</span><span class="up-action">Browse</span>
         <input type="file" id="img-file" accept="image/*" onchange="onFile(this,'img-name','img-preview')"/>
       </label>
       <div class="fn" id="img-name"></div>
-      <img id="img-preview" class="img-preview" alt=""/>
+      <img id="img-preview" class="img-preview" alt="Preview of the selected image"/>
     </div>
 
     <!-- Audio -->
     <div class="input-block">
-      <div class="input-label"><span class="marker">►</span>Audio</div>
+      <div class="input-label">Audio</div>
       <label class="upload-btn">
-        <span>[ Upload ]</span><span>▸</span>
+        <span>Choose an audio file</span><span class="up-action">Browse</span>
         <input type="file" id="aud-file" accept="audio/*" onchange="onFile(this,'aud-name',null)"/>
       </label>
       <div class="fn" id="aud-name"></div>
       <button class="rec-btn" onclick="alert('Recording not supported in this build.')">
-        <div class="rec-dot"></div>[ Record ]
+        <div class="rec-dot"></div>Record audio
       </button>
     </div>
 
     <!-- Video -->
     <div class="input-block">
-      <div class="input-label"><span class="marker">►</span>Video</div>
-      <div class="coming"><span>[ Coming soon ]</span><span style="color:var(--muted2)">—</span></div>
+      <div class="input-label">Video</div>
+      <div class="coming"><span>Coming soon</span></div>
     </div>
 
     <!-- Policies -->
     <div class="policies-block">
-      <div class="sec-hdr" style="margin:0 -14px 8px;padding:6px 14px">POLICIES</div>
+      <div class="block-title">Policies</div>
       <div class="policy-list" id="policy-list"></div>
     </div>
   </div>
@@ -323,51 +406,50 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 
       <!-- Gauge -->
       <div class="gauge-wrap">
-        <div class="gauge-label">► HARM SCORE</div>
-        <canvas id="gauge" width="160" height="100"></canvas>
+        <div class="gauge-label">Harm score</div>
+        <canvas id="gauge" width="224" height="134"></canvas>
         <div class="gauge-status">
           <div class="gsdot" id="gsdot"></div>
-          <span id="gstxt">AWAITING INPUT</span>
+          <span id="gstxt">Awaiting input</span>
         </div>
       </div>
 
       <!-- Risk by category -->
       <div class="cats-block">
-        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">► RISK BY CATEGORY</div>
+        <div class="block-title">Risk by category</div>
         <div id="cats"></div>
       </div>
 
       <!-- CCG -->
       <div class="graph-block">
-        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">CONTENT COMPOSITION GRAPH</div>
+        <div class="block-title">Content composition graph</div>
         <div class="graph-empty" id="graph-empty">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <circle cx="8" cy="16" r="4" stroke="#5a635a" stroke-width="1.5"/>
-            <circle cx="24" cy="8" r="4" stroke="#5a635a" stroke-width="1.5"/>
-            <circle cx="24" cy="24" r="4" stroke="#5a635a" stroke-width="1.5"/>
-            <line x1="12" y1="14" x2="20" y2="10" stroke="#5a635a" stroke-width="1"/>
-            <line x1="12" y1="18" x2="20" y2="22" stroke="#5a635a" stroke-width="1"/>
+          <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
+            <circle cx="8" cy="16" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="24" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="24" cy="24" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="12" y1="14" x2="20" y2="10" stroke="currentColor" stroke-width="1.2"/>
+            <line x1="12" y1="18" x2="20" y2="22" stroke="currentColor" stroke-width="1.2"/>
           </svg>
-          GRAPH RENDERS AFTER ANALYSIS
+          Analyze some content to see how its elements connect.
         </div>
         <canvas id="graph" style="display:none"></canvas>
         <div class="legend">
-          <div class="leg-item"><div class="leg-line" style="background:var(--green)"></div>co-occur</div>
-          <div class="leg-item"><div class="leg-line" style="background:var(--blue)"></div>semantic</div>
-          <div class="leg-item"><div class="leg-line" style="background:var(--amber)"></div>temporal</div>
-          <div class="leg-item"><div class="leg-line" style="background:var(--red)"></div>harmful</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--accent)"></div>co-occur</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--sky)"></div>semantic</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--warn)"></div>temporal</div>
+          <div class="leg-item"><div class="leg-line" style="background:var(--bad)"></div>harmful</div>
         </div>
       </div>
 
       <!-- Multimodal evidence -->
       <div class="evidence-block">
-        <div class="sec-hdr" style="margin:0 -14px 10px;padding:6px 14px">► MULTIMODAL EVIDENCE</div>
-        <div id="ev-text" class="evidence-row"><div class="ev-left"><div class="ev-badge">T</div>Text encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-text-score">—</span><span class="ev-arrow">——</span></div></div>
-        <div id="ev-image" class="evidence-row"><div class="ev-left"><div class="ev-badge">I</div>Image encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-image-score">—</span><span class="ev-arrow">——</span></div></div>
-        <div id="ev-audio" class="evidence-row"><div class="ev-left"><div class="ev-badge">A</div>Audio encoder</div><div style="display:flex;align-items:center;gap:8px"><span class="ev-score" id="ev-audio-score">—</span><span class="ev-arrow">——</span></div></div>
+        <div class="block-title">Multimodal evidence</div>
+        <div id="ev-text" class="evidence-row"><div class="ev-left"><div class="ev-badge">T</div>Text encoder</div><span class="ev-score" id="ev-text-score">—</span></div>
+        <div id="ev-image" class="evidence-row"><div class="ev-left"><div class="ev-badge">I</div>Image encoder</div><span class="ev-score" id="ev-image-score">—</span></div>
+        <div id="ev-audio" class="evidence-row"><div class="ev-left"><div class="ev-badge">A</div>Audio encoder</div><span class="ev-score" id="ev-audio-score">—</span></div>
         <div class="evidence-row ev-row-special">
-          <div class="ev-left"><span class="ev-dot-green">◆</span>Compositional harm score</div>
-          <div class="ev-arrow">——</div>
+          <div class="ev-left"><span class="ev-dot">◆</span>Compositional harm score</div>
         </div>
       </div>
 
@@ -377,32 +459,32 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
   <!-- RIGHT: RESULTS -->
   <div class="col">
     <div class="sec-hdr">
-      <span><span class="sec-tri">►</span>RESULTS</span>
+      <span class="sec-title">Results</span>
     </div>
 
     <div class="right-block">
-      <div class="r-label">OVERALL RISK</div>
-      <div class="r-val big" id="r-score"><span class="r-dash">—</span> <span style="font-size:13px;color:var(--muted)">/ 100</span></div>
+      <div class="r-label">Overall risk</div>
+      <div class="r-val big" id="r-score"><span class="r-dash">—</span> <span style="font-size:13px;font-family:var(--sans);font-weight:400;color:var(--muted)">/ 100</span></div>
       <div class="r-sub" id="r-verdict">—</div>
     </div>
 
     <div class="right-block">
-      <div class="r-label">POLICY STATUS</div>
+      <div class="r-label">Policy status</div>
       <div class="r-val" id="r-status"><span class="r-dash">—</span></div>
     </div>
 
     <div class="right-block">
-      <div class="r-label">POLICIES TRIGGERED</div>
+      <div class="r-label">Policies triggered</div>
       <div class="policy-triggered-list" id="r-policies"><span class="r-dash">—</span></div>
     </div>
 
     <div class="right-block">
-      <div class="r-label">EVIDENCE</div>
-      <div class="r-val" id="r-evidence" style="font-size:11px;color:var(--muted)"><span class="r-dash">—</span></div>
+      <div class="r-label">Evidence</div>
+      <div class="r-note" id="r-evidence"><span class="r-dash">—</span></div>
     </div>
 
     <div class="explanation-block">
-      <div class="r-label">EXPLANATION</div>
+      <div class="r-label">Explanation</div>
       <div class="expl-text" id="r-expl">Awaiting analysis…</div>
     </div>
   </div>
@@ -412,18 +494,16 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 <!-- BOTTOM BAR -->
 <div class="bottom-bar">
   <div class="bar-left">
-    <button class="btn-analyze" id="analyze-btn" onclick="runAnalysis()">
-      [ ANALYZE ]
-    </button>
+    <button class="btn-analyze" id="analyze-btn" onclick="runAnalysis()">Analyze</button>
     <div class="spinner" id="spin"></div>
   </div>
-  <div class="bar-mid" style="font-size:10px;color:var(--muted);letter-spacing:.06em">
+  <div class="bar-mid">
     <span id="bar-status">ready</span>
   </div>
   <div class="bar-right">
-    <button class="btn-verdict btn-allow"  onclick="verdict('ALLOW')">ALLOW</button>
-    <button class="btn-verdict btn-review" onclick="verdict('REVIEW')">REVIEW</button>
-    <button class="btn-verdict btn-block"  onclick="verdict('BLOCK')">BLOCK</button>
+    <button class="btn-verdict btn-allow"  onclick="verdict('ALLOW')">Allow</button>
+    <button class="btn-verdict btn-review" onclick="verdict('REVIEW')">Review</button>
+    <button class="btn-verdict btn-block"  onclick="verdict('BLOCK')">Block</button>
   </div>
 </div>
 
@@ -432,11 +512,28 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 <script>
 const API = 'http://127.0.0.1:8000';
 
+/* ── design tokens, read from CSS so the canvases match the theme ── */
+const _css = getComputedStyle(document.documentElement);
+const T = n => _css.getPropertyValue(n).trim();
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* crisp canvases on high-DPI screens */
+function fitCanvas(cv, w, h) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
+const label = v => v ? v.charAt(0) + v.slice(1).toLowerCase() : '';
+
 /* ── policies list ── */
 const POLICIES = ['Violence','Hate Speech','Self-harm','Drugs','Extremism','Weapons'];
 const polList = document.getElementById('policy-list');
 POLICIES.forEach(p => {
-  const d = document.createElement('div');
+  const d = document.createElement('label');
   d.className = 'policy-item';
   d.innerHTML = `<input type="checkbox" checked/>${p}`;
   polList.appendChild(d);
@@ -456,7 +553,7 @@ CATS.forEach(c => {
   catsEl.innerHTML += `
     <div class="cat-row">
       <div class="cat-name">${c.label}</div>
-      <div class="cat-bar-bg"><div class="cat-bar-fill" id="cat-${c.key}" style="background:var(--green)"></div></div>
+      <div class="cat-bar-bg"><div class="cat-bar-fill" id="cat-${c.key}"></div></div>
       <div class="cat-val" id="catv-${c.key}">—</div>
     </div>`;
 });
@@ -480,116 +577,130 @@ async function health() {
     const d = await r.json();
     const ok = d.models_loaded;
     document.getElementById('sdot').className = 'status-dot ' + (ok ? 'online' : 'err');
-    document.getElementById('stxt').textContent = ok ? 'online — models loaded' : 'degraded — ' + (d.error||'loading');
+    document.getElementById('stxt').textContent = ok ? 'Online, models loaded' : 'Degraded: ' + (d.error||'loading');
   } catch {
     document.getElementById('sdot').className = 'status-dot err';
-    document.getElementById('stxt').textContent = 'offline — start app.py';
+    document.getElementById('stxt').textContent = 'Offline. Start the server with uvicorn.';
   }
 }
 health(); setInterval(health, 8000);
 
 /* ── gauge ── */
-function drawGauge(score, verdict) {
-  const cv = document.getElementById('gauge');
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
-  ctx.clearRect(0,0,W,H);
+function gaugeColor(score) {
+  return score >= 0.6 ? T('--bad') : score >= 0.35 ? T('--warn') : T('--ok');
+}
 
-  const cx = W/2, cy = H - 12;
-  const r = 72, start = Math.PI, end = 2*Math.PI;
+function drawGauge(score) {
+  const cv = document.getElementById('gauge');
+  const W = 224, H = 134;
+  const ctx = fitCanvas(cv, W, H);
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H - 14, r = 92, lw = 16;
 
   // Track
-  ctx.beginPath(); ctx.arc(cx,cy,r,start,end);
-  ctx.strokeStyle='#1c1f1c'; ctx.lineWidth=14; ctx.stroke();
+  ctx.lineCap = 'round'; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 2*Math.PI);
+  ctx.strokeStyle = T('--panel-3'); ctx.stroke();
 
   // Ticks
-  for (let i=0;i<=10;i++){
+  ctx.lineCap = 'butt'; ctx.lineWidth = 1; ctx.strokeStyle = T('--line-2');
+  for (let i = 0; i <= 10; i++) {
     const a = Math.PI + (i/10)*Math.PI;
-    const x1=cx+Math.cos(a)*(r-9), y1=cy+Math.sin(a)*(r-9);
-    const x2=cx+Math.cos(a)*(r+2), y2=cy+Math.sin(a)*(r+2);
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
-    ctx.strokeStyle='#2e322e'; ctx.lineWidth=1; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a)*(r+lw/2+5), cy + Math.sin(a)*(r+lw/2+5));
+    ctx.lineTo(cx + Math.cos(a)*(r+lw/2+9), cy + Math.sin(a)*(r+lw/2+9));
+    ctx.stroke();
   }
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
 
   if (score !== null) {
-    // Fill arc
-    const fillEnd = Math.PI + score * Math.PI;
-    const color = score >= 0.6 ? '#ff3b3b' : score >= 0.35 ? '#ffaa00' : '#00ff88';
-    ctx.beginPath(); ctx.arc(cx,cy,r,start,fillEnd);
-    ctx.strokeStyle=color; ctx.lineWidth=14; ctx.lineCap='butt'; ctx.stroke();
+    const color = gaugeColor(score);
+    const end = Math.PI + Math.max(score, 0.001) * Math.PI;
 
-    // Needle
-    const a = Math.PI + score*Math.PI;
-    const nx=cx+Math.cos(a)*(r-22), ny=cy+Math.sin(a)*(r-22);
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nx,ny);
-    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+    // Filled arc with a soft glow
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = 16;
+    ctx.lineCap = 'round'; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, end);
+    ctx.strokeStyle = color; ctx.stroke();
+    ctx.restore();
 
-    // Center dot
-    ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2);
-    ctx.fillStyle='#fff'; ctx.fill();
+    // Knob at the end of the arc
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(end)*r, cy + Math.sin(end)*r, 4.5, 0, Math.PI*2);
+    ctx.fillStyle = T('--text'); ctx.fill();
 
-    // Score text
-    ctx.font = '700 26px Courier New';
+    // Score
+    ctx.font = `700 40px ${T('--display')}`;
     ctx.fillStyle = color;
-    ctx.textAlign='center'; ctx.textBaseline='bottom';
-    ctx.fillText(Math.round(score*100), cx, cy-6);
-
-    ctx.font = '10px Courier New';
-    ctx.fillStyle = '#5a635a';
-    ctx.fillText('/ 100', cx, cy+2);
+    ctx.fillText(Math.round(score*100), cx, cy - 14);
+    ctx.font = `500 12px ${T('--sans')}`;
+    ctx.fillStyle = T('--muted');
+    ctx.fillText('out of 100', cx, cy + 4);
   } else {
-    // Placeholder dash
-    ctx.font = '700 22px Courier New';
-    ctx.fillStyle = '#3a3f3a';
-    ctx.textAlign='center'; ctx.textBaseline='bottom';
-    ctx.fillText('—', cx, cy-8);
+    ctx.font = `700 34px ${T('--display')}`;
+    ctx.fillStyle = T('--line-2');
+    ctx.fillText('—', cx, cy - 14);
   }
 }
-drawGauge(null, null);
+
+/* the gauge sweeps up to the score when a result arrives */
+function animateGauge(score) {
+  if (reduceMotion) { drawGauge(score); return; }
+  const t0 = performance.now(), dur = 700;
+  (function frame(now) {
+    const p = Math.min((now - t0) / dur, 1);
+    drawGauge(score * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(frame);
+  })(t0);
+}
 
 /* ── graph canvas ── */
 function drawGraph(nodes, edges) {
   if (!nodes || nodes.length === 0) return;
   const cv = document.getElementById('graph');
-  document.getElementById('graph-empty').style.display='none';
-  cv.style.display='block';
-  const W = cv.parentElement.clientWidth - 28;
-  cv.width = W; cv.height = 160;
-  const ctx = cv.getContext('2d');
-  ctx.clearRect(0,0,W,160);
+  document.getElementById('graph-empty').style.display = 'none';
+  cv.style.display = 'block';
+  const host = cv.parentElement, hs = getComputedStyle(host);
+  const W = Math.max(host.clientWidth - parseFloat(hs.paddingLeft) - parseFloat(hs.paddingRight), 120);
+  const H = 168;
+  const ctx = fitCanvas(cv, W, H);
+  ctx.clearRect(0, 0, W, H);
 
-  const EDGE_COLORS = {'0':'#00ff88','1':'#4da6ff','2':'#ffaa00','3':'#ffaa00','4':'#ff3b3b'};
-  const MOD_COLORS  = {text:'#00ff88',image:'#4da6ff',audio:'#b06aff',video:'#ffaa00',action:'#ff3b3b'};
+  const EDGE_COLORS = {'0':T('--accent'),'1':T('--sky'),'2':T('--warn'),'3':T('--warn'),'4':T('--bad')};
+  const MOD_COLORS  = {text:T('--sky'),image:T('--orchid'),audio:T('--accent'),video:T('--warn'),action:T('--bad')};
 
   // Lay out nodes in a circle
-  const cx=W/2, cy=80, rad=Math.min(cx,cy)-24;
-  const pos={};
+  const cx = W/2, cy = H/2, rad = Math.min(cx, cy) - 26;
+  const pos = {};
   nodes.forEach((n,i) => {
     const a = (i/nodes.length)*2*Math.PI - Math.PI/2;
-    pos[n.id]={x:cx+Math.cos(a)*rad, y:cy+Math.sin(a)*rad};
+    pos[n.id] = {x: cx + Math.cos(a)*rad, y: cy + Math.sin(a)*rad};
   });
 
   // Edges
   edges.forEach(e => {
-    const p=pos[e.source_id]||pos[e.source], q=pos[e.target_id]||pos[e.target];
-    if (!p||!q) return;
-    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
-    ctx.strokeStyle=EDGE_COLORS[String(e.edge_type)]||'#3a3f3a';
-    ctx.lineWidth=1.2; ctx.globalAlpha=0.7; ctx.stroke(); ctx.globalAlpha=1;
+    const p = pos[e.source_id]||pos[e.source], q = pos[e.target_id]||pos[e.target];
+    if (!p || !q) return;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+    ctx.strokeStyle = EDGE_COLORS[String(e.edge_type)] || T('--line-2');
+    ctx.lineWidth = 1.5; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1;
   });
 
   // Nodes
   nodes.forEach(n => {
-    const p=pos[n.id]; if(!p) return;
-    const col=MOD_COLORS[n.modality||n.type]||'#5a635a';
-    ctx.beginPath(); ctx.arc(p.x,p.y,6,0,Math.PI*2);
-    ctx.fillStyle=n.harmful_signal?'#ff3b3b':col;
+    const p = pos[n.id]; if (!p) return;
+    const col = MOD_COLORS[n.modality||n.type] || T('--muted');
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI*2);
+    ctx.fillStyle = n.harmful_signal ? T('--bad') : col;
     ctx.fill();
-    ctx.strokeStyle='#0b0c0b'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.strokeStyle = T('--panel-2'); ctx.lineWidth = 2; ctx.stroke();
     // label
-    ctx.font='9px Courier New'; ctx.fillStyle='#7a877a';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.fillText((n.modality||n.type||'').slice(0,3).toUpperCase(), p.x, p.y+8);
+    ctx.font = `500 10px ${T('--sans')}`; ctx.fillStyle = T('--text-2');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText((n.modality||n.type||'').slice(0,3).toUpperCase(), p.x, p.y + 10);
   });
 }
 
@@ -619,17 +730,24 @@ async function runAnalysis() {
   const audF=document.getElementById('aud-file').files[0];
   if(audF) fd.append('audio',audF);
 
-  setTimeout(()=>{ setStep(3); bstat.textContent='building graph…'; },800);
-  setTimeout(()=>{ setStep(4); bstat.textContent='matching patterns…'; },1600);
-  setTimeout(()=>{ setStep(5); bstat.textContent='scoring…'; },2400);
+  // Progress hints only: cancel them as soon as the server answers, so a fast
+  // response can't be overwritten by a late timer.
+  const stepTimers = [
+    setTimeout(()=>{ setStep(3); bstat.textContent='building graph…'; },800),
+    setTimeout(()=>{ setStep(4); bstat.textContent='matching patterns…'; },1600),
+    setTimeout(()=>{ setStep(5); bstat.textContent='scoring…'; },2400),
+  ];
+  const stopSteps = () => stepTimers.forEach(clearTimeout);
 
   try {
     const resp = await fetch(`${API}/analyze`,{method:'POST',body:fd});
+    stopSteps();
     const data = await resp.json();
     if(!resp.ok) throw new Error(data.error||resp.statusText);
     setStep(6); bstat.textContent='complete';
     renderResult(data);
   } catch(e) {
+    stopSteps();
     bstat.textContent='error: '+e.message;
     setStep(1);
   } finally {
@@ -641,14 +759,15 @@ function renderResult(d) {
   const score = d.harm_score;
   const verdict = d.verdict;
   const pct = Math.round(score*100);
+  const tone = verdict==='HARMFUL' ? 'var(--bad)' : score>=0.35 ? 'var(--warn)' : 'var(--ok)';
 
   // Gauge
-  drawGauge(score, verdict);
+  animateGauge(score);
   const gsdot=document.getElementById('gsdot');
   const gstxt=document.getElementById('gstxt');
-  gsdot.style.background = verdict==='HARMFUL'?'var(--red)': score>=0.35?'var(--amber)':'var(--green)';
-  gstxt.textContent = verdict;
-  gstxt.style.color  = verdict==='HARMFUL'?'var(--red)': score>=0.35?'var(--amber)':'var(--green)';
+  gsdot.style.background = tone;
+  gstxt.textContent = label(verdict);
+  gstxt.style.color = tone;
 
   // Category bars — use triggered_elements to infer category scores
   const catScores={};
@@ -662,7 +781,7 @@ function renderResult(d) {
     const val=document.getElementById('catv-'+c.key);
     if(bar){
       bar.style.width=Math.round(v*100)+'%';
-      bar.style.background=v>=0.6?'var(--red)':v>=0.35?'var(--amber)':'var(--green)';
+      bar.style.background=v>=0.6?'var(--bad)':v>=0.35?'var(--warn)':'var(--ok)';
     }
     if(val) val.textContent=v?Math.round(v*100):'—';
   });
@@ -678,31 +797,38 @@ function renderResult(d) {
     if(ms[m]!==undefined){
       row.classList.add('active');
       sc.textContent=ms[m];
-      sc.style.color=ms[m]>=0.35?'var(--red)':'var(--green)';
+      sc.style.color=ms[m]>=0.35?'var(--bad)':'var(--ok)';
     } else {
       row.classList.remove('active');
       sc.textContent='—';
+      sc.style.color='';
     }
   });
 
   // Right panel
   const rScore=document.getElementById('r-score');
-  rScore.innerHTML=`<span class="r-val big ${verdict.toLowerCase()}">${pct}</span> <span style="font-size:13px;color:var(--muted)">/ 100</span>`;
+  rScore.innerHTML=`<span class="r-val big ${verdict.toLowerCase()}">${pct}</span> <span style="font-size:13px;font-family:var(--sans);font-weight:400;color:var(--muted)">/ 100</span>`;
 
   const rv=document.getElementById('r-verdict');
-  rv.textContent=verdict;
+  rv.textContent=label(verdict);
   rv.className='r-sub '+(verdict==='HARMFUL'?'harmful':verdict==='SAFE'?'safe':'review');
 
   const rs=document.getElementById('r-status');
   rs.innerHTML=verdict==='HARMFUL'
-    ?'<span style="color:var(--red)">VIOLATION DETECTED</span>'
-    :'<span style="color:var(--green)">CLEAR</span>';
+    ?'<span class="chip bad">Violation detected</span>'
+    :'<span class="chip ok">Clear</span>';
 
   // Policies triggered
   const rp=document.getElementById('r-policies');
   const pc=d.policy_clause;
   if(pc && typeof pc==='object'){
-    rp.innerHTML=`<span class="ptag active">${pc.clause_id||''} — ${pc.title||''}</span>`;
+    rp.innerHTML='';
+    const tag=document.createElement('span');
+    tag.className='ptag active';
+    const id=document.createElement('b');
+    id.textContent=pc.clause_id||'';
+    tag.append(id, document.createTextNode(pc.title||''));
+    rp.appendChild(tag);
   } else {
     rp.innerHTML='<span class="r-dash">—</span>';
   }
@@ -710,7 +836,7 @@ function renderResult(d) {
   // Evidence summary
   const re=document.getElementById('r-evidence');
   const els=d.triggered_elements||[];
-  re.textContent=els.length?`${els.length} element(s) triggered`:'none';
+  re.textContent=els.length?`${els.length} element(s) triggered`:'None';
 
   // Explanation
   document.getElementById('r-expl').textContent = d.explanation||'No explanation returned.';
@@ -721,7 +847,7 @@ function verdict(v) {
 }
 
 /* init */
-drawGauge(null,null);
+drawGauge(null);
 </script>
 </body>
 </html>

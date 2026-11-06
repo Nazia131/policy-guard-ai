@@ -21,6 +21,9 @@ transformers>=4.38.0
 openai-whisper>=20231117
 clip @ git+https://github.com/openai/CLIP.git
 
+# --- OCR (models bundled in the wheel; no extra downloads) ---
+rapidocr-onnxruntime>=1.3.0
+
 # --- Audio ---
 librosa>=0.10.1
 soundfile>=0.12.1

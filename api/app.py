@@ -188,20 +188,32 @@ class CHEMPipeline:
         elements: List[Dict[str, Any]] = []
         modality_scores: Dict[str, float] = {}
 
+        # --- OCR: read any text embedded in the image and treat it as caption ---
+        image_text = ""
+        pil_image = None
+        if image_bytes is not None:
+            from PIL import Image
+
+            pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            try:
+                from encoders.ocr import extract_text
+
+                image_text = extract_text(pil_image)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[CHEM][api] OCR skipped: {exc}")
+        combined_text = " ".join(t for t in (text, image_text) if t and t.strip())
+
         # --- Text ---
-        if text:
+        if combined_text:
             print("[CHEM][api] Encoding text...")
-            res = self.text_encoder.encode(text)
+            res = self.text_encoder.encode(combined_text)
             elements.extend(_reindex(res.get("elements", []), "text", len(elements)))
             modality_scores["text"] = float(res.get("harm_score", 0.0))
 
         # --- Image ---
         if image_bytes is not None:
             print("[CHEM][api] Encoding image...")
-            from PIL import Image
-
-            pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            res = self.image_encoder.encode(pil)
+            res = self.image_encoder.encode(pil_image)
             elements.extend(_reindex(res.get("elements", []), "image", len(elements)))
             modality_scores["image"] = float(res.get("harm_score", 0.0))
 
@@ -249,7 +261,7 @@ class CHEMPipeline:
         # --- Exculpatory context dampening ---
         # If the text signals a benign real-world context (acting, audition, etc.)
         # dampen image and video scores before fusion so they don't override context.
-        if _is_exculpatory(text):
+        if _is_exculpatory(combined_text):
             factor = get_coefficient("exculpatory_dampening_factor")
             for mod in ("image", "video"):
                 if mod in modality_scores:
@@ -265,8 +277,12 @@ class CHEMPipeline:
         threshold = get_coefficient("final_harm_threshold")
         verdict = "HARMFUL" if final_score >= threshold else "SAFE"
 
-        matched_pattern = score.get("matched_pattern")
-        policy_clause = score.get("policy_clause")
+        harmful = verdict == "HARMFUL"
+        # Only a HARMFUL verdict may cite a policy clause or triggered elements;
+        # otherwise a SAFE result would carry a misleading "flagged under ..." text.
+        matched_pattern = score.get("matched_pattern") if harmful else None
+        policy_clause = score.get("policy_clause") if harmful else None
+        triggered_elements = score.get("triggered_elements", []) if harmful else []
         triggered_category = None
         if isinstance(policy_clause, dict):
             triggered_category = policy_clause.get("clause_id")
@@ -275,6 +291,8 @@ class CHEMPipeline:
         shap_scores: List[Any] = []
         explanation = ""
         try:
+            if not harmful:
+                raise _NoViolation()
             shap_result = self.shap_explainer.explain(graph) if self.shap_explainer else {}
             gnn_result = self.gnn_explainer.explain(graph) if self.gnn_explainer else {}
             shap_scores = shap_result.get("node_scores", shap_result.get("attributions", []))
@@ -286,23 +304,33 @@ class CHEMPipeline:
                 policy_clause=policy_clause,
             )
             explanation = report.get("explanation", "")
+        except _NoViolation:
+            explanation = (
+                "No policy violation was detected. The combined harm score "
+                f"({final_score:.2f}) is below the {threshold:.2f} decision threshold."
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"[CHEM][api] Explainability degraded: {exc}")
-            explanation = _fallback_explanation(policy_clause, score.get("triggered_elements", []))
+            explanation = _fallback_explanation(policy_clause, triggered_elements)
 
         return {
             "harm_score": round(final_score, 4),
             "verdict": verdict,
             "policy_clause": policy_clause,
             "triggered_category": triggered_category,
-            "triggered_elements": score.get("triggered_elements", []),
+            "triggered_elements": triggered_elements,
             "nodes": graph.get("nodes", []),
             "edges": graph.get("edges", []),
             "explanation": explanation,
             "cross_modal_flag": bool(fused.get("cross_modal_flag", False)),
             "shap_scores": shap_scores,
             "modality_scores": {k: round(v, 4) for k, v in modality_scores.items()},
+            "image_text": image_text,
         }
+
+
+class _NoViolation(Exception):
+    """Internal signal: verdict is SAFE, skip the violation explanation."""
 
 
 # ---------------------------------------------------------------------------

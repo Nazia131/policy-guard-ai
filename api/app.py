@@ -274,6 +274,7 @@ class CHEMPipeline:
         # --- Explainability (best-effort; never breaks the response) ---
         shap_scores: List[Any] = []
         explanation = ""
+        explanation_detail: Dict[str, Any] = {}
         try:
             shap_result = self.shap_explainer.explain(graph) if self.shap_explainer else {}
             gnn_result = self.gnn_explainer.explain(graph) if self.gnn_explainer else {}
@@ -284,8 +285,12 @@ class CHEMPipeline:
                 gnn_result=gnn_result,
                 matched_pattern=matched_pattern,
                 policy_clause=policy_clause,
+                harm_score=final_score,
+                verdict=verdict,
+                threshold=threshold,
             )
             explanation = report.get("explanation", "")
+            explanation_detail = report.get("structured", {})
         except Exception as exc:  # noqa: BLE001
             print(f"[CHEM][api] Explainability degraded: {exc}")
             explanation = _fallback_explanation(policy_clause, score.get("triggered_elements", []))
@@ -302,6 +307,11 @@ class CHEMPipeline:
             "cross_modal_flag": bool(fused.get("cross_modal_flag", False)),
             "shap_scores": shap_scores,
             "modality_scores": {k: round(v, 4) for k, v in modality_scores.items()},
+            "needs_human_review": bool(
+                explanation_detail.get("decision", {}).get("needs_human_review", False)
+            ),
+            "mitigating_elements": explanation_detail.get("mitigating_elements", []),
+            "explainer_agreement": explanation_detail.get("agreement", {}),
         }
 
 

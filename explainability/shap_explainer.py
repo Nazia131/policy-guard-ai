@@ -44,8 +44,10 @@ Public API
 
 from __future__ import annotations
 
+import random
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -152,18 +154,34 @@ class SHAPExplainer:
         A trained GAT.  It is put in eval mode and never trained here.
     device : str or torch.device, optional
         Device to run explanation on.  Defaults to CUDA if available else CPU.
+    seed : int or None
+        Seed applied before every ``explain`` call so the same graph always gets
+        the same explanation (important for audits and appeals).  ``None``
+        disables seeding.
+    benign_baseline : torch.Tensor, optional
+        ``[F]`` mean node-feature vector of *benign* content.  When given, SHAP
+        attributes the decision relative to typical safe content ("why harmful
+        instead of safe") rather than relative to zeros / the graph itself.
     """
 
     def __init__(
         self,
         model: CHEMGraphAttentionNetwork,
         device: Optional[Any] = None,
+        seed: Optional[int] = 0,
+        benign_baseline: Optional[torch.Tensor] = None,
     ) -> None:
         self.device = torch.device(
             device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         )
         self.model = model.to(self.device)
         self.model.eval()
+        self.seed = seed
+        self.benign_baseline = (
+            benign_baseline.detach().to(self.device).float().reshape(-1)
+            if benign_baseline is not None
+            else None
+        )
         self._shap_available = _SHAP_AVAILABLE
         print(
             f"[CHEM][shap_explainer] Initialised (device={self.device}, "
@@ -230,12 +248,30 @@ class SHAPExplainer:
         torch.Tensor
             ``[num_samples, N, F]`` background tensor.
         """
+        if self.benign_baseline is not None and self.benign_baseline.numel() == x.shape[1]:
+            # Reference = typical benign node features (broadcast to every node),
+            # with small jitter so GradientExplainer sees a distribution.
+            base = self.benign_baseline.unsqueeze(0).expand_as(x).clone()
+            scale = x.std(dim=0, keepdim=True).clamp_min(1e-6) * 0.1
+            samples = [base]
+            for _ in range(max(1, num_samples - 1)):
+                samples.append(base + torch.randn_like(x) * scale)
+            return torch.stack(samples, dim=0)
+
         feature_std = x.std(dim=0, keepdim=True).clamp_min(1e-6)
         samples = [torch.zeros_like(x)]  # zero baseline
         for _ in range(max(1, num_samples - 1)):
             noise = torch.randn_like(x) * feature_std * 0.5
             samples.append(x + noise)
         return torch.stack(samples, dim=0)
+
+    def _seed_everything(self) -> None:
+        """Seed python, numpy and torch RNGs so explanations are reproducible."""
+        if self.seed is None:
+            return
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
 
     def _faithfulness(
         self,
@@ -285,6 +321,43 @@ class SHAPExplainer:
             drop = (base_prob - ablated_prob) / base_prob
             return float(max(0.0, min(1.0, drop)))
 
+    def _random_ablation_drop(
+        self,
+        wrapper: _NodeFeatureModelWrapper,
+        x: torch.Tensor,
+        k: int,
+        trials: int = 8,
+    ) -> float:
+        """Mean relative probability drop when ``k`` *random* nodes are zeroed.
+
+        This is the control for :meth:`_faithfulness`: an attribution is only
+        informative if ablating its top nodes hurts the prediction more than
+        ablating the same number of arbitrary nodes.
+
+        Returns
+        -------
+        float
+            Average relative drop in ``[0, 1]`` (``0.0`` if the base probability
+            is ~0 or the graph has no nodes).
+        """
+        num_nodes = x.shape[0]
+        if num_nodes == 0:
+            return 0.0
+        k = max(1, min(k, num_nodes))
+        with torch.no_grad():
+            base_prob = float(wrapper(x).flatten()[0].item())
+            if base_prob <= 1e-6:
+                return 0.0
+            rng = random.Random(self.seed if self.seed is not None else 0)
+            drops = []
+            for _ in range(trials):
+                idx = rng.sample(range(num_nodes), k)
+                x_abl = x.clone()
+                x_abl[idx] = 0.0
+                prob = float(wrapper(x_abl).flatten()[0].item())
+                drops.append(max(0.0, min(1.0, (base_prob - prob) / base_prob)))
+        return float(sum(drops) / len(drops))
+
     def _gradient_fallback(
         self, wrapper: _NodeFeatureModelWrapper, x: torch.Tensor
     ) -> List[float]:
@@ -314,6 +387,7 @@ class SHAPExplainer:
         # gradient * input, then per-node L2 norm across features.
         contribution = (grads * x_req).detach()
         node_scores = contribution.norm(dim=1)
+        self._last_signed = [float(v) for v in contribution.sum(dim=1).cpu().tolist()]
         return [float(v) for v in node_scores.cpu().tolist()]
 
     # -- public API ---------------------------------------------------------
@@ -348,14 +422,20 @@ class SHAPExplainer:
             print(f"[CHEM][shap_explainer] Could not read graph: {exc}")
             return {
                 "node_scores": [],
+                "node_signed_scores": [],
                 "node_ids": [],
                 "node_labels": [],
                 "faithfulness": 0.0,
+                "faithfulness_random": 0.0,
+                "faithfulness_margin": 0.0,
+                "baseline": "none",
                 "method": "unavailable",
                 "available": False,
                 "note": f"Invalid graph_dict: {exc}",
             }
 
+        self._seed_everything()
+        self._last_signed = []
         num_nodes = x.shape[0]
         node_ids = [str(m.get("id", f"node_{i}")) for i, m in enumerate(node_meta)]
         node_labels = [
@@ -383,8 +463,13 @@ class SHAPExplainer:
                 # Collapse any leading batch dim and the feature dim -> [N].
                 tensor_vals = tensor_vals.reshape(-1, num_nodes, x.shape[1])[0]
                 node_scores = [float(v) for v in tensor_vals.abs().sum(dim=1).tolist()]
+                # Signed total: >0 pushes toward harmful, <0 pushes toward safe.
+                self._last_signed = [float(v) for v in tensor_vals.sum(dim=1).tolist()]
                 method = "shap_gradient"
-                note = "SHAP GradientExplainer attributions (|value| summed over features)."
+                note = (
+                    "SHAP GradientExplainer attributions (|value| summed over features; "
+                    "signed totals in node_signed_scores)."
+                )
             except Exception as exc:  # SHAP present but failed -> fall back
                 print(f"[CHEM][shap_explainer] SHAP failed ({exc}); using gradient fallback.")
                 node_scores = self._gradient_fallback(wrapper, x)
@@ -400,16 +485,24 @@ class SHAPExplainer:
             note = "SHAP dependency unavailable; used input-gradient saliency instead."
 
         faithfulness = self._faithfulness(wrapper, x, node_scores)
+        k = max(1, int(round(num_nodes * 0.3)))
+        faithfulness_random = self._random_ablation_drop(wrapper, x, k)
+        faithfulness_margin = faithfulness - faithfulness_random
+        signed = self._last_signed if len(self._last_signed) == num_nodes else [0.0] * num_nodes
 
         print(
             f"[CHEM][shap_explainer] Done: {num_nodes} nodes, method={method}, "
-            f"faithfulness={faithfulness:.3f}"
+            f"faithfulness={faithfulness:.3f} (random control {faithfulness_random:.3f})"
         )
         return {
             "node_scores": node_scores,
+            "node_signed_scores": signed,
             "node_ids": node_ids,
             "node_labels": node_labels,
             "faithfulness": faithfulness,
+            "faithfulness_random": faithfulness_random,
+            "faithfulness_margin": faithfulness_margin,
+            "baseline": "benign_mean" if self.benign_baseline is not None else "self_jitter",
             "method": method,
             "available": self._shap_available and method == "shap_gradient",
             "note": note,

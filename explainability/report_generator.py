@@ -26,7 +26,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from explainability.metrics import decision_band, explainer_agreement
 from utils.config import get_policy_clause  # absolute import per spec
+
+# A SHAP attribution is only called "confirming" when ablating its top nodes
+# hurts the prediction at least this much more than ablating random nodes.
+_MIN_FAITHFULNESS_MARGIN = 0.1
 
 # Exact human-readable template mandated by the CHEM spec.  Kept as a module
 # constant so the wording is defined in exactly one place.
@@ -136,6 +141,14 @@ class ReportGenerator:
         nodes = nodes or []
 
         attr_map = self._node_attribution_map(shap_result)
+        signed_map: Dict[str, float] = {}
+        if isinstance(shap_result, dict):
+            signed_map = {
+                str(i): float(s)
+                for i, s in zip(
+                    shap_result.get("node_ids", []), shap_result.get("node_signed_scores", [])
+                )
+            }
         gnn_important_ids = set()
         if isinstance(gnn_result, dict):
             for n in gnn_result.get("important_nodes", []):
@@ -154,6 +167,11 @@ class ReportGenerator:
             in_gnn = node_id in gnn_important_ids
 
             if harmful or high_attr or in_gnn:
+                supported_by = [
+                    name
+                    for name, flag in (("rule", harmful), ("shap", high_attr), ("gnn", in_gnn))
+                    if flag
+                ]
                 selected.append(
                     {
                         "id": node_id,
@@ -161,7 +179,9 @@ class ReportGenerator:
                         "modality": str(node.get("modality", node.get("type", "unknown"))),
                         "confidence": float(node.get("confidence", 0.0)),
                         "attribution": attribution,
+                        "signed_attribution": signed_map.get(node_id, 0.0),
                         "harmful_signal": harmful,
+                        "supported_by": supported_by,
                     }
                 )
 
@@ -177,12 +197,58 @@ class ReportGenerator:
                         "modality": "unknown",
                         "confidence": 0.0,
                         "attribution": attribution,
+                        "signed_attribution": signed_map.get(node_id, 0.0),
                         "harmful_signal": False,
+                        "supported_by": ["shap"],
                     }
                 )
 
-        selected.sort(key=lambda e: (e["attribution"], e["confidence"]), reverse=True)
+        # Elements backed by more independent signals come first.
+        selected.sort(
+            key=lambda e: (len(e["supported_by"]), e["attribution"], e["confidence"]),
+            reverse=True,
+        )
         return selected
+
+    def _mitigating_elements(
+        self,
+        graph_dict: Dict[str, Any],
+        shap_result: Optional[Dict[str, Any]],
+        limit: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Elements whose SHAP contribution points toward *safe*.
+
+        These are the benign parts of the content (e.g. the harmless half of a
+        meme) and are what a reviewer needs to see to judge a possible false
+        positive.  Returns at most ``limit`` elements with the most negative
+        signed attribution, or an empty list if signed scores are unavailable.
+        """
+        if not isinstance(shap_result, dict):
+            return []
+        ids = [str(i) for i in shap_result.get("node_ids", [])]
+        signed = [float(s) for s in shap_result.get("node_signed_scores", [])]
+        if not ids or len(ids) != len(signed):
+            return []
+        nodes = graph_dict.get("nodes")
+        if nodes is None:
+            data = graph_dict.get("data")
+            nodes = getattr(data, "node_meta", None) if data is not None else None
+        meta = {str(n.get("id", f"node_{i}")): n for i, n in enumerate(nodes or [])}
+        negatives = sorted(
+            ((i, s) for i, s in zip(ids, signed) if s < 0.0), key=lambda t: t[1]
+        )[:limit]
+        out = []
+        for node_id, s in negatives:
+            node = meta.get(node_id, {})
+            out.append(
+                {
+                    "id": node_id,
+                    "label": str(node.get("full_label", node.get("label", node_id))),
+                    "modality": str(node.get("modality", node.get("type", "unknown"))),
+                    "signed_attribution": s,
+                }
+            )
+        return out
 
     def _format_element_list(self, elements: List[Dict[str, Any]]) -> str:
         """Render selected elements as a readable clause for the template.
@@ -230,6 +296,64 @@ class ReportGenerator:
             return matched_pattern
         return "no specific stored pattern"
 
+    def _decision_aware_text(
+        self,
+        band: str,
+        clause_label: str,
+        element_list_str: str,
+        pattern_name: str,
+        faithfulness: float,
+        faithfulness_margin: float,
+        harm_score: Optional[float],
+        threshold: Optional[float],
+        mitigating: List[Dict[str, Any]],
+    ) -> str:
+        """Build explanation wording that matches how strongly the model decided."""
+        if faithfulness_margin >= _MIN_FAITHFULNESS_MARGIN:
+            shap_tail = (
+                f"SHAP attribution supports these elements at {faithfulness:.2f} faithfulness."
+            )
+        else:
+            shap_tail = (
+                f"SHAP attribution only weakly supports these elements "
+                f"(faithfulness {faithfulness:.2f}, little better than removing random elements)."
+            )
+        score_txt = "numeric score not provided"
+        if harm_score is not None and threshold is not None:
+            score_txt = f"harm score {float(harm_score):.2f} vs threshold {float(threshold):.2f}"
+        mitigating_txt = ""
+        if mitigating:
+            mitigating_txt = " Elements pointing toward safe: " + "; ".join(
+                f"'{m['label']}' ({m['modality']})" for m in mitigating
+            ) + "."
+
+        if band == "harmful":
+            return (
+                f"This content was flagged under {clause_label} ({score_txt}). "
+                f"The following elements combined to form a harmful pattern: {element_list_str}. "
+                f"This combination matches {pattern_name} in the Harm Pattern Library. "
+                f"{shap_tail}{mitigating_txt}"
+            )
+        if band == "borderline_harmful":
+            return (
+                f"This content was flagged under {clause_label}, but only narrowly "
+                f"({score_txt}); human review is recommended. Elements contributing most: "
+                f"{element_list_str}. Closest library pattern: {pattern_name}. "
+                f"{shap_tail}{mitigating_txt}"
+            )
+        if band == "borderline_safe":
+            return (
+                f"This content was not flagged, but it is close to the threshold ({score_txt}); "
+                f"human review is recommended. Elements contributing most toward harm: "
+                f"{element_list_str}. Closest library pattern: {pattern_name}. "
+                f"{shap_tail}{mitigating_txt}"
+            )
+        return (
+            f"This content was not flagged ({score_txt}). Elements contributing most toward "
+            f"harm: {element_list_str}, which were not strong enough to cross the threshold."
+            f"{mitigating_txt}"
+        )
+
     # -- public API ---------------------------------------------------------
 
     def generate(
@@ -239,8 +363,16 @@ class ReportGenerator:
         gnn_result: Optional[Dict[str, Any]],
         matched_pattern: Any,
         policy_clause: Any,
+        *,
+        harm_score: Optional[float] = None,
+        verdict: Optional[str] = None,
+        threshold: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Produce the combined structured + human-readable explanation.
+
+        When ``harm_score`` / ``verdict`` / ``threshold`` are supplied the wording
+        is decision-aware: confident harmful, borderline, or not flagged.  Without
+        them the original fixed template is used (backward compatible).
 
         Parameters
         ----------
@@ -283,16 +415,53 @@ class ReportGenerator:
         pattern_name = self._pattern_name(matched_pattern)
 
         faithfulness = 0.0
+        faithfulness_margin = 0.0
         if isinstance(shap_result, dict):
             faithfulness = float(shap_result.get("faithfulness", 0.0))
+            faithfulness_margin = float(
+                shap_result.get("faithfulness_margin", faithfulness)
+            )
         faithfulness_str = f"{faithfulness:.2f}"
 
-        # --- human-readable string (EXACT template) ------------------------
-        explanation = _EXPLANATION_TEMPLATE.format(
-            policy_clause=clause_label,
-            element_list=element_list_str,
-            pattern_name=pattern_name,
-            faithfulness=faithfulness_str,
+        mitigating = self._mitigating_elements(graph_dict, shap_result)
+        agreement = explainer_agreement(shap_result, gnn_result)
+
+        # --- decision band --------------------------------------------------
+        if harm_score is not None and threshold is not None:
+            band = decision_band(harm_score, threshold)
+        elif verdict is not None:
+            band = "harmful" if str(verdict).upper() == "HARMFUL" else "safe"
+        else:
+            band = "unknown"
+
+        if band == "unknown":
+            # Legacy behaviour: the exact spec template.
+            explanation = _EXPLANATION_TEMPLATE.format(
+                policy_clause=clause_label,
+                element_list=element_list_str,
+                pattern_name=pattern_name,
+                faithfulness=faithfulness_str,
+            )
+        else:
+            explanation = self._decision_aware_text(
+                band=band,
+                clause_label=clause_label,
+                element_list_str=element_list_str,
+                pattern_name=pattern_name,
+                faithfulness=faithfulness,
+                faithfulness_margin=faithfulness_margin,
+                harm_score=harm_score,
+                threshold=threshold,
+                mitigating=mitigating,
+            )
+            if agreement["available"] and not agreement["agree"]:
+                explanation += (
+                    " The SHAP and subgraph explainers point at different elements, "
+                    "so treat this explanation as low confidence."
+                )
+
+        needs_human_review = band.startswith("borderline") or (
+            agreement["available"] and not agreement["agree"]
         )
 
         # --- structured payload -------------------------------------------
@@ -306,7 +475,17 @@ class ReportGenerator:
             "matched_pattern": matched_pattern,
             "pattern_name": pattern_name,
             "elements": elements,
+            "mitigating_elements": mitigating,
             "faithfulness": faithfulness,
+            "faithfulness_margin": faithfulness_margin,
+            "decision": {
+                "band": band,
+                "harm_score": harm_score,
+                "threshold": threshold,
+                "verdict": verdict,
+                "needs_human_review": bool(needs_human_review),
+            },
+            "agreement": agreement,
             "shap": {
                 "available": bool(shap_result.get("available")) if isinstance(shap_result, dict) else False,
                 "method": shap_result.get("method") if isinstance(shap_result, dict) else None,

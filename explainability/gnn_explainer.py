@@ -74,6 +74,14 @@ class GNNExplainerWrapper:
         Number of optimisation steps GNNExplainer runs to learn the masks.
     device : str or torch.device, optional
         Device to run explanation on.  Defaults to CUDA if available else CPU.
+    seed : int or None
+        Seed applied before every ``explain`` call so repeated requests on the
+        same graph yield the same subgraph.  ``None`` disables seeding.
+    min_mask_spread : float
+        If ``max(node_mask) - min(node_mask)`` is below this value the mask is
+        considered *flat* (the explainer found no element that matters more than
+        the others) and no "important" nodes/edges are reported, instead of
+        arbitrarily returning the top fraction of a meaningless mask.
 
     Notes
     -----
@@ -87,6 +95,8 @@ class GNNExplainerWrapper:
         model: CHEMGraphAttentionNetwork,
         epochs: int = 200,
         device: Optional[Any] = None,
+        seed: Optional[int] = 0,
+        min_mask_spread: float = 0.05,
     ) -> None:
         self.device = torch.device(
             device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -94,6 +104,8 @@ class GNNExplainerWrapper:
         self.model = model.to(self.device)
         self.model.eval()
         self.epochs = int(epochs)
+        self.seed = seed
+        self.min_mask_spread = float(min_mask_spread)
         self._backend = (
             "explain_api"
             if _NEW_API_AVAILABLE
@@ -181,6 +193,8 @@ class GNNExplainerWrapper:
             "edge_mask": [0.0] * num_edges,
             "important_nodes": [],
             "important_edges": [],
+            "mask_spread": 0.0,
+            "flat_mask": False,
             "backend": self._backend,
             "available": False,
             "note": note,
@@ -228,6 +242,9 @@ class GNNExplainerWrapper:
                 f"PyG explainability unavailable: {_PYG_IMPORT_ERROR}", num_nodes, num_edges
             )
 
+        if self.seed is not None:
+            torch.manual_seed(self.seed)  # reproducible mask initialisation
+
         try:
             if self._backend == "explain_api":
                 node_mask, edge_mask = self._run_new_api(x, edge_index, batch)
@@ -247,8 +264,20 @@ class GNNExplainerWrapper:
         if len(edge_mask) < num_edges:
             edge_mask += [0.0] * (num_edges - len(edge_mask))
 
-        important_node_idx = self._threshold_indices(node_mask)
-        important_edge_idx = self._threshold_indices(edge_mask)
+        mask_spread = (max(node_mask) - min(node_mask)) if node_mask else 0.0
+        flat_mask = mask_spread < self.min_mask_spread
+        if flat_mask:
+            # No element stands out: report that honestly instead of inventing
+            # an "important" subgraph from the top fraction of a flat mask.
+            important_node_idx: List[int] = []
+            important_edge_idx: List[int] = []
+            method_note += (
+                f" Mask is flat (spread {mask_spread:.3f} < {self.min_mask_spread}); "
+                "no clear responsible subgraph."
+            )
+        else:
+            important_node_idx = self._threshold_indices(node_mask)
+            important_edge_idx = self._threshold_indices(edge_mask)
 
         important_nodes = [
             {
@@ -282,6 +311,8 @@ class GNNExplainerWrapper:
             "edge_mask": edge_mask,
             "important_nodes": important_nodes,
             "important_edges": important_edges,
+            "mask_spread": float(mask_spread),
+            "flat_mask": bool(flat_mask),
             "backend": self._backend,
             "available": True,
             "note": method_note,

@@ -2,9 +2,12 @@
 # CHEM - Compositional Harm Emergence Modeling
 # Python 3.10+ recommended.
 #
-# Install core deps first, then torch-geometric (which needs a matching torch):
+#   python -m venv .venv && source .venv/bin/activate
 #   pip install -r requirements.txt
-#   pip install torch-geometric
+#   python -m pytest -q
+#
+# torch-geometric is pure Python on top of torch, so it installs in the same
+# step; no separate command is needed.
 #
 # CLIP is installed from OpenAI's GitHub repo (there is no PyPI package named
 # `clip` that matches ViT-B/32); see the pinned VCS line below.
@@ -31,6 +34,7 @@ pandas>=2.0.0
 networkx>=3.1
 scikit-learn>=1.3.0
 matplotlib>=3.7.0
+pyarrow>=14.0.0  # pandas reads the MemeLens parquet files (data/prepare_harmeme.py)
 
 # --- Explainability ---
 shap>=0.44.0
@@ -45,6 +49,7 @@ wandb>=0.16.0
 
 # --- Media / misc ---
 Pillow>=10.0.0
+opencv-python-headless>=4.8.0  # video frame decoding fallback (encoders/video_encoder.py)
 tqdm>=4.66.0
 huggingface_hub>=0.21.0
 

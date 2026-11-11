@@ -18,7 +18,7 @@ from utils.config import (
     get_visual_concepts,
     load_policy_config,
 )
-from graph.edge_types import EDGE_TYPES, edge_type_id, edge_type_name
+from graph.edge_types import edge_type_id, edge_type_name
 
 
 def test_policy_clauses_cover_all_harm_categories():

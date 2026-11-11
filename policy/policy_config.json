@@ -11,7 +11,6 @@
     ],
     "embedding_dim": 768
   },
-
   "harm_categories": {
     "hate_speech": {
       "id": "hate_speech",
@@ -84,7 +83,6 @@
       "harmful": true
     }
   },
-
   "safe_categories": {
     "benign_text": {
       "id": "benign_text",
@@ -99,7 +97,6 @@
       "harmful": false
     }
   },
-
   "toxic_bert_mapping": {
     "description": "Maps the six unitary/toxic-bert output labels to CHEM policy harm categories. Used by the text encoder so that toxic-bert scores are re-expressed as policy categories with no hardcoded semantics in Python.",
     "labels": {
@@ -110,43 +107,201 @@
       "insult": "harassment_bullying",
       "identity_hate": "hate_speech"
     },
-    "text_harm_score_labels": ["toxic", "severe_toxic", "threat", "identity_hate"],
+    "text_harm_score_labels": [
+      "toxic",
+      "severe_toxic",
+      "threat",
+      "identity_hate"
+    ],
     "harmful_signal_threshold": 0.5
   },
-
   "visual_concepts": {
     "description": "Action-based natural-language prompts used for CLIP zero-shot classification. Harmful concepts describe a harmful action or composition, not a bare object. Safe concepts anchor the softmax so harmful scores are relative to plausible benign interpretations.",
     "harmful": [
-      { "prompt": "a person holding a weapon and threatening another person", "category": "weapons_threat" },
-      { "prompt": "a person pointing a gun at someone's head", "category": "weapons_threat" },
-      { "prompt": "a knife raised in a threatening manner toward a person", "category": "weapons_threat" },
-      { "prompt": "a person stalking or following another person with a knife in a dark place", "category": "weapons_threat" },
-      { "prompt": "a hooded figure holding a knife following a woman in a dark corridor", "category": "weapons_threat" },
-      { "prompt": "a person carrying a weapon while approaching an unsuspecting victim", "category": "weapons_threat" },
-      { "prompt": "a crowd of people attacking an individual", "category": "violent_threat" },
-      { "prompt": "an angry mob holding torches and marching", "category": "extremist_content" },
-      { "prompt": "a hate symbol such as a swastika or burning cross", "category": "hate_speech" },
-      { "prompt": "graphic depiction of blood and physical injury on a person", "category": "graphic_violence" },
-      { "prompt": "a person physically assaulting another person", "category": "violent_threat" },
-      { "prompt": "a child in a sexualized or endangered situation", "category": "child_safety" },
-      { "prompt": "an adult attempting to secretly contact a child", "category": "child_safety" },
-      { "prompt": "a person degrading or mocking another person to humiliate them", "category": "harassment_bullying" },
-      { "prompt": "extremist propaganda imagery with flags and masked fighters", "category": "extremist_content" },
-      { "prompt": "sexually explicit exploitation of a person", "category": "sexual_exploitation" },
-      { "prompt": "a fabricated news headline spreading dangerous false claims", "category": "dangerous_misinformation" }
+      {
+        "prompt": "a person holding a weapon and threatening another person",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a person pointing a gun at someone's head",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a knife raised in a threatening manner toward a person",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a person stalking or following another person with a knife in a dark place",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a hooded figure holding a knife following a woman in a dark corridor",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a person carrying a weapon while approaching an unsuspecting victim",
+        "category": "weapons_threat"
+      },
+      {
+        "prompt": "a crowd of people attacking an individual",
+        "category": "violent_threat"
+      },
+      {
+        "prompt": "an angry mob holding torches and marching",
+        "category": "extremist_content"
+      },
+      {
+        "prompt": "a hate symbol such as a swastika or burning cross",
+        "category": "hate_speech"
+      },
+      {
+        "prompt": "graphic depiction of blood and physical injury on a person",
+        "category": "graphic_violence"
+      },
+      {
+        "prompt": "a person physically assaulting another person",
+        "category": "violent_threat"
+      },
+      {
+        "prompt": "a child in a sexualized or endangered situation",
+        "category": "child_safety"
+      },
+      {
+        "prompt": "an adult attempting to secretly contact a child",
+        "category": "child_safety"
+      },
+      {
+        "prompt": "a person degrading or mocking another person to humiliate them",
+        "category": "harassment_bullying"
+      },
+      {
+        "prompt": "extremist propaganda imagery with flags and masked fighters",
+        "category": "extremist_content"
+      },
+      {
+        "prompt": "sexually explicit exploitation of a person",
+        "category": "sexual_exploitation"
+      },
+      {
+        "prompt": "a fabricated news headline spreading dangerous false claims",
+        "category": "dangerous_misinformation"
+      }
     ],
     "safe": [
-      { "prompt": "a group of friends smiling at a party", "category": "neutral_scene" },
-      { "prompt": "a person cooking food in a kitchen", "category": "neutral_scene" },
-      { "prompt": "a peaceful landscape with mountains and a lake", "category": "neutral_scene" },
-      { "prompt": "children playing safely in a playground", "category": "neutral_scene" },
-      { "prompt": "a person giving a business presentation", "category": "neutral_scene" },
-      { "prompt": "a pet dog sitting on a couch", "category": "neutral_scene" },
-      { "prompt": "a sports team celebrating a victory", "category": "neutral_scene" },
-      { "prompt": "a plate of food on a restaurant table", "category": "neutral_scene" }
+      {
+        "prompt": "a group of friends smiling at a party",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person cooking food in a kitchen",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a peaceful landscape with mountains and a lake",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "children playing safely in a playground",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person giving a business presentation",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a pet dog sitting on a couch",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a sports team celebrating a victory",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a plate of food on a restaurant table",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a photo of an animal in nature",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a close-up photo of a wild animal",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a cute cat or kitten",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a bird perched on a branch",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person chopping vegetables with a kitchen knife",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a chef slicing food with a knife on a cutting board",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a kitchen knife and cutlery on a table",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person eating dinner with a knife and fork",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person holding a camera or phone taking a photo",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a city street with cars and buildings",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a close-up photo of an everyday object",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a portrait photo of a smiling person",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a meme with plain text on a colourful background",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a screenshot of a website or app",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a hunter or park ranger with a hunting rifle in a forest",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a police officer or soldier in a ceremonial parade",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a cartoon or illustration",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a person doing sports or exercising",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a product photo on a white background",
+        "category": "neutral_scene"
+      },
+      {
+        "prompt": "a flower garden",
+        "category": "neutral_scene"
+      }
     ]
   },
-
   "video_action_mapping": {
     "description": "Maps a subset of Kinetics-400 VideoMAE action labels (substring match, case-insensitive) to CHEM harm categories. Actions not listed are treated as benign.",
     "harmful_actions": {
@@ -161,7 +316,6 @@
       "capoeira": "graphic_violence"
     }
   },
-
   "policy_clauses": {
     "hate_speech": {
       "clause_id": "MCS-3.2",
@@ -234,18 +388,41 @@
       "text": "Platforms must act against coordinated inauthentic and harmful behavior."
     }
   },
-
   "exculpatory_keywords": {
     "description": "Words/phrases in accompanying text that signal a benign real-world context (acting, prop, costume, etc.). When any keyword matches, the image/video harm score is multiplied by exculpatory_dampening_factor before fusion.",
     "keywords": [
-      "audition", "auditioning", "acting", "actor", "actress", "film", "movie",
-      "prop", "costume", "cosplay", "theater", "theatre", "stage", "scene",
-      "police role", "character", "stunt", "photoshoot", "photo shoot",
-      "stock photo", "model", "music video", "short film", "tv show", "tv series",
-      "rehearsal", "script", "role", "performance", "halloween"
+      "audition",
+      "auditioning",
+      "acting",
+      "actor",
+      "actress",
+      "film",
+      "movie",
+      "prop",
+      "costume",
+      "cosplay",
+      "theater",
+      "theatre",
+      "stage",
+      "scene",
+      "police role",
+      "character",
+      "stunt",
+      "photoshoot",
+      "photo shoot",
+      "stock photo",
+      "model",
+      "music video",
+      "short film",
+      "tv show",
+      "tv series",
+      "rehearsal",
+      "script",
+      "role",
+      "performance",
+      "halloween"
     ]
   },
-
   "coefficients": {
     "description": "All tunable numeric coefficients. Nothing numeric that governs harm semantics is hardcoded in Python; modules read from here.",
     "exculpatory_dampening_factor": 0.3,
@@ -259,11 +436,17 @@
     "gat_vs_pattern_weight": 0.7,
     "pattern_similarity_weight": 0.3,
     "co_occurrence_window": 2,
-    "acoustic_agitation_sigma_ratio": 1.0
+    "acoustic_agitation_sigma_ratio": 1.0,
+    "image_min_similarity": 0.22,
+    "image_min_margin": 0.15
   },
-
-  "node_types": ["text", "image", "audio", "video", "action"],
-
+  "node_types": [
+    "text",
+    "image",
+    "audio",
+    "video",
+    "action"
+  ],
   "edge_types": {
     "co_occurrence": 0,
     "semantic_reference": 1,

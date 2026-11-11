@@ -236,6 +236,7 @@ class ContentCompositionGraphBuilder:
         # Carry optional, JSON-friendly fields through when present.
         for optional_key in (
             "policy_category",
+            "concepts",
             "temporal_position",
             "target_id",
             "text",

@@ -22,7 +22,7 @@ import base64
 import io
 from typing import Any, Dict, List, Optional
 
-from utils.config import get_coefficient, get_policy_clause, get_visual_concepts
+from utils.config import get_coefficient, get_visual_concepts
 from utils.embeddings import to_fixed_dim
 
 
@@ -148,6 +148,11 @@ class ImageEncoder:
         score exceeds ``image_harmful_min_confidence``.  ``harm_score`` is the
         highest harmful-concept score that cleared that threshold, else 0.0.
 
+        An image always yields exactly ONE element.  It carries the top
+        concept's prompt (``full_label``), its policy category
+        (``policy_category``; also ``label`` when harmful) and every harmful
+        concept above the threshold (``concepts``).
+
         Inputs
         ------
         image : PIL.Image | str
@@ -184,15 +189,34 @@ class ImageEncoder:
         top_score = float(probs[top_i])
         top_is_harmful = bool(top_concept["harmful"]) and top_score > self._min_conf
 
-        # --- Build elements --------------------------------------------------
-        elements: List[Dict[str, Any]] = []
-        idx = 0
-
-        # Base image node carrying the CLIP visual embedding.
-        elements.append(
+        # --- Build the element -----------------------------------------------
+        # ONE node per image.  Earlier versions also emitted a second,
+        # near-identical node for the top harmful concept ("<Category>: <prompt>").
+        # That showed up as two image nodes for one image, counted the same
+        # evidence twice (two "triggered elements") and created a spurious
+        # image<->image ``harmful_pattern`` edge.  The observed content (the
+        # prompt CLIP matched) and its policy classification (the category) now
+        # live on the same node.  Any further harmful concepts that clear the
+        # threshold are listed under ``concepts`` rather than becoming nodes.
+        concepts: List[Dict[str, Any]] = [
             {
-                "id": f"image_{idx}",
-                "label": "image",
+                "category": concept["category"],
+                "prompt": concept["prompt"],
+                "confidence": float(prob),
+            }
+            for concept, prob in zip(self._concepts, probs)
+            if concept["harmful"] and prob > self._min_conf
+        ]
+        concepts.sort(key=lambda c: c["confidence"], reverse=True)
+        # Unchanged definition: highest harmful-concept score above the threshold.
+        harm_score = concepts[0]["confidence"] if concepts else 0.0
+
+        elements: List[Dict[str, Any]] = [
+            {
+                "id": "image_0",
+                # Harmful images are labelled by their policy category (so the
+                # pattern library can match on it); everything else is "image".
+                "label": top_concept["category"] if top_is_harmful else "image",
                 "type": "image",
                 "embedding": base_embedding,
                 "confidence": top_score,
@@ -200,38 +224,9 @@ class ImageEncoder:
                 "full_label": top_concept["prompt"],
                 "modality": self.modality,
                 "policy_category": top_concept["category"],
+                "concepts": concepts,
             }
-        )
-        idx += 1
-
-        # Emit a dedicated node for every harmful concept clearing the
-        # threshold, tracking the max qualifying harmful score for harm_score.
-        harm_score = 0.0
-        for concept, prob in zip(self._concepts, probs):
-            if not concept["harmful"]:
-                continue
-            if prob <= self._min_conf:
-                continue
-            harm_score = max(harm_score, float(prob))
-            clause = get_policy_clause(concept["category"], self._config_path)
-            elements.append(
-                {
-                    "id": f"image_{idx}",
-                    "label": concept["category"],
-                    "type": "image",
-                    "embedding": base_embedding,
-                    "confidence": float(prob),
-                    # Only the actual top harmful concept is the driving signal;
-                    # other threshold-clearing concepts are informative context.
-                    "harmful_signal": bool(
-                        top_is_harmful and self._concepts[top_i] is concept
-                    ),
-                    "full_label": f"{clause.get('title', concept['category'])}: {concept['prompt']}",
-                    "modality": self.modality,
-                    "policy_category": concept["category"],
-                }
-            )
-            idx += 1
+        ]
 
         print(
             f"[CHEM][image_encoder] -> top='{top_concept['prompt'][:48]}' "

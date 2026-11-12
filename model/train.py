@@ -43,6 +43,7 @@ import torch
 from torch import nn
 
 from model.gat_model import CHEMGraphAttentionNetwork
+from model import train_utils
 
 # Default checkpoint location (created on demand).
 _CHECKPOINT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "checkpoints"))
@@ -52,6 +53,9 @@ _BEST_CHECKPOINT_PATH = os.path.join(_CHECKPOINT_DIR, "best_gat.pt")
 _LEARNING_RATE = 0.005
 _WEIGHT_DECAY = 5e-4
 _EARLY_STOP_PATIENCE = 20
+
+# Built graphs are cached here (keyed by a fingerprint, see model.train_utils).
+_DEFAULT_CACHE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "cache"))
 
 
 # --------------------------------------------------------------------------- #
@@ -274,7 +278,7 @@ def _evaluate(model, loader, device) -> Dict[str, Any]:
     Returns
     -------
     dict
-        ``{"metrics": {...}, "loss": float}``.
+        ``{"metrics": {...}, "loss": float, "y_true": [...], "y_prob": [...]}``.
     """
     model.eval()
     criterion = nn.NLLLoss()
@@ -296,7 +300,12 @@ def _evaluate(model, loader, device) -> Dict[str, Any]:
             y_true.extend(target.cpu().tolist())
 
     metrics = _compute_metrics(y_true, y_prob)
-    return {"metrics": metrics, "loss": total_loss / max(n_batches, 1)}
+    return {
+        "metrics": metrics,
+        "loss": total_loss / max(n_batches, 1),
+        "y_true": y_true,
+        "y_prob": y_prob,
+    }
 
 
 def _train_one_epoch(model, loader, optimizer, criterion, device) -> float:
@@ -340,6 +349,10 @@ def train(
     batch_size: int = 32,
     data_dir: Optional[str] = None,
     wandb_project: str = "chem",
+    max_samples: Optional[int] = None,
+    cache_dir: Optional[str] = _DEFAULT_CACHE_DIR,
+    use_class_weights: bool = True,
+    threshold_metric: str = "f1",
 ) -> Optional[str]:
     """Run the full CHEM GAT training + evaluation pipeline.
 
@@ -353,6 +366,14 @@ def train(
         Dataset root forwarded to the Hateful Memes loader.
     wandb_project : str, optional
         Weights & Biases project name (default ``"chem"``).
+    max_samples : int, optional
+        Use only a deterministic random subset of the samples (quick smoke test).
+    cache_dir : str, optional
+        Folder for the built-graph cache; ``None`` disables caching.
+    use_class_weights : bool, optional
+        Weight the loss by inverse class frequency of the TRAIN split.
+    threshold_metric : str, optional
+        ``"f1"`` or ``"accuracy"``: what the validation-tuned threshold maximises.
 
     Returns
     -------
@@ -366,27 +387,37 @@ def train(
     # --- Weights & Biases (guarded so offline / missing wandb never crashes). -
     wandb = _init_wandb(wandb_project, epochs, batch_size)
 
-    # --- Encoders loaded ONCE and reused for every sample. ------------------
-    print("[CHEM][train] Loading text + image encoders (once) ...")
-    from encoders.text_encoder import TextEncoder
-    from encoders.image_encoder import ImageEncoder
-
-    text_encoder = TextEncoder(device=str(device))
-    image_encoder = ImageEncoder(device=str(device))
-
-    # --- Build the dataset. -------------------------------------------------
+    # --- Samples (and optional deterministic subset for smoke tests). -------
     print("[CHEM][train] Loading Hateful Memes samples ...")
     samples = _load_samples("train", data_dir)
     # Some distributions ship a separate dev split; fold it in when present.
     samples += _load_samples("dev", data_dir)
     print(f"[CHEM][train] Loaded {len(samples)} raw samples.")
-
     if not samples:
         print("[CHEM][train] ERROR: no samples available; aborting training.")
         return None
+    samples = train_utils.subsample(samples, max_samples)
+    if max_samples:
+        print(f"[CHEM][train] --max-samples: using {len(samples)} samples.")
 
-    dataset = _build_dataset(samples, text_encoder, image_encoder)
-    print(f"[CHEM][train] Built {len(dataset)} content-composition graphs.")
+    # --- Graphs: from cache when the fingerprint matches, else build+save. ---
+    key = train_utils.graph_cache_key(samples)
+    dataset = train_utils.load_graph_cache(cache_dir, key)
+    if dataset is not None:
+        print(f"[CHEM][train] Loaded {len(dataset)} cached graphs (key {key}); encoders not needed.")
+    else:
+        print("[CHEM][train] Loading text + image encoders (once) ...")
+        from encoders.text_encoder import TextEncoder
+        from encoders.image_encoder import ImageEncoder
+
+        text_encoder = TextEncoder(device=str(device))
+        image_encoder = ImageEncoder(device=str(device))
+        dataset = _build_dataset(samples, text_encoder, image_encoder)
+        print(f"[CHEM][train] Built {len(dataset)} content-composition graphs "
+              f"from {len(samples)} samples ({len(samples) - len(dataset)} skipped).")
+        saved = train_utils.save_graph_cache(cache_dir, key, dataset) if dataset else None
+        if saved:
+            print(f"[CHEM][train] Cached graphs -> {saved}")
     if not dataset:
         print("[CHEM][train] ERROR: no graphs built; aborting training.")
         return None
@@ -408,7 +439,13 @@ def train(
     optimizer = torch.optim.Adam(
         model.parameters(), lr=_LEARNING_RATE, weight_decay=_WEIGHT_DECAY
     )
-    criterion = nn.NLLLoss()
+    if use_class_weights:
+        train_labels = [int(g.y.view(-1)[0]) for g in splits["train"]]
+        weights = train_utils.class_weights(train_labels)
+        print(f"[CHEM][train] class weights (safe, harmful) = {weights[0]:.3f}, {weights[1]:.3f}")
+        criterion = nn.NLLLoss(weight=torch.tensor(weights, dtype=torch.float, device=device))
+    else:
+        criterion = nn.NLLLoss()
 
     os.makedirs(_CHECKPOINT_DIR, exist_ok=True)
 
@@ -465,14 +502,34 @@ def train(
         checkpoint = torch.load(_BEST_CHECKPOINT_PATH, map_location=device)
         model.load_state_dict(checkpoint["state_dict"])
 
+    # Threshold is chosen on VALIDATION predictions only, then applied to test.
+    val_eval = _evaluate(model, val_loader, device)
+    threshold = train_utils.best_threshold(val_eval["y_true"], val_eval["y_prob"], threshold_metric)
     test_eval = _evaluate(model, test_loader, device)
-    test_metrics = test_eval["metrics"]
-    print("[CHEM][train] ===== TEST METRICS =====")
+    test_metrics = test_eval["metrics"]  # at the fixed 0.5 threshold
+    tuned = train_utils.metrics_at_threshold(test_eval["y_true"], test_eval["y_prob"], threshold)
+    base_rate = sum(test_eval["y_true"]) / max(len(test_eval["y_true"]), 1)
+
+    print("[CHEM][train] ===== TEST METRICS (threshold 0.50) =====")
     print(f"[CHEM][train] accuracy : {test_metrics.get('accuracy', 0.0):.4f}")
     print(f"[CHEM][train] precision: {test_metrics.get('precision', 0.0):.4f}")
     print(f"[CHEM][train] recall   : {test_metrics.get('recall', 0.0):.4f}")
     print(f"[CHEM][train] f1       : {test_metrics.get('f1', 0.0):.4f}")
     print(f"[CHEM][train] auc      : {test_metrics.get('auc', 0.0):.4f}")
+    print(f"[CHEM][train] ===== TEST METRICS (threshold {threshold:.2f}, tuned on val {threshold_metric}) =====")
+    print(f"[CHEM][train] accuracy : {tuned['accuracy']:.4f}")
+    print(f"[CHEM][train] precision: {tuned['precision']:.4f}")
+    print(f"[CHEM][train] recall   : {tuned['recall']:.4f}")
+    print(f"[CHEM][train] f1       : {tuned['f1']:.4f}")
+    print(f"[CHEM][train] baseline : always-SAFE accuracy = {1 - base_rate:.4f} "
+          f"(harmful share of test = {base_rate:.4f})")
+
+    import json
+    thr_path = os.path.splitext(_BEST_CHECKPOINT_PATH)[0] + ".threshold.json"
+    with open(thr_path, "w", encoding="utf-8") as fh:
+        json.dump({"threshold": threshold, "metric": threshold_metric,
+                   "chosen_on": "validation", "test_metrics_at_threshold": tuned}, fh, indent=2)
+    print(f"[CHEM][train] saved tuned threshold -> {thr_path}")
 
     _wandb_log(wandb, {f"test_{k}": v for k, v in test_metrics.items()})
     _wandb_finish(wandb)
@@ -593,6 +650,16 @@ def main() -> None:
         default="chem",
         help="Weights & Biases project name.",
     )
+    parser.add_argument("--max-samples", "--max_samples", dest="max_samples", type=int, default=None,
+                        help="Use only N randomly chosen samples (quick smoke test).")
+    parser.add_argument("--cache-dir", "--cache_dir", dest="cache_dir", type=str, default=_DEFAULT_CACHE_DIR,
+                        help="Folder for the built-graph cache (default model/cache).")
+    parser.add_argument("--no-cache", dest="no_cache", action="store_true",
+                        help="Disable the graph cache (always rebuild).")
+    parser.add_argument("--no-class-weights", dest="no_class_weights", action="store_true",
+                        help="Use the plain unweighted loss.")
+    parser.add_argument("--threshold-metric", dest="threshold_metric", choices=("f1", "accuracy"),
+                        default="f1", help="What the validation-tuned threshold maximises.")
     args = parser.parse_args()
 
     train(
@@ -600,6 +667,10 @@ def main() -> None:
         batch_size=args.batch_size,
         data_dir=args.data_dir,
         wandb_project=args.wandb_project,
+        max_samples=args.max_samples,
+        cache_dir=None if args.no_cache else args.cache_dir,
+        use_class_weights=not args.no_class_weights,
+        threshold_metric=args.threshold_metric,
     )
 
 

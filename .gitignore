@@ -43,3 +43,6 @@ wandb/
 # Temp
 *.tmp
 *.log
+
+# Built-graph cache (model/train_utils.py)
+model/cache/

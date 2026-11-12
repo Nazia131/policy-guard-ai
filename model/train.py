@@ -353,6 +353,7 @@ def train(
     cache_dir: Optional[str] = _DEFAULT_CACHE_DIR,
     use_class_weights: bool = True,
     threshold_metric: str = "f1",
+    threshold: Optional[float] = None,
 ) -> Optional[str]:
     """Run the full CHEM GAT training + evaluation pipeline.
 
@@ -374,6 +375,9 @@ def train(
         Weight the loss by inverse class frequency of the TRAIN split.
     threshold_metric : str, optional
         ``"f1"`` or ``"accuracy"``: what the validation-tuned threshold maximises.
+    threshold : float, optional
+        Use this fixed decision threshold (e.g. 0.35) instead of tuning one on
+        the validation split.
 
     Returns
     -------
@@ -504,7 +508,11 @@ def train(
 
     # Threshold is chosen on VALIDATION predictions only, then applied to test.
     val_eval = _evaluate(model, val_loader, device)
-    threshold = train_utils.best_threshold(val_eval["y_true"], val_eval["y_prob"], threshold_metric)
+    if threshold is None:
+        threshold = train_utils.best_threshold(val_eval["y_true"], val_eval["y_prob"], threshold_metric)
+        how = f"tuned on val {threshold_metric}"
+    else:
+        how = "fixed by --threshold"
     test_eval = _evaluate(model, test_loader, device)
     test_metrics = test_eval["metrics"]  # at the fixed 0.5 threshold
     tuned = train_utils.metrics_at_threshold(test_eval["y_true"], test_eval["y_prob"], threshold)
@@ -516,7 +524,7 @@ def train(
     print(f"[CHEM][train] recall   : {test_metrics.get('recall', 0.0):.4f}")
     print(f"[CHEM][train] f1       : {test_metrics.get('f1', 0.0):.4f}")
     print(f"[CHEM][train] auc      : {test_metrics.get('auc', 0.0):.4f}")
-    print(f"[CHEM][train] ===== TEST METRICS (threshold {threshold:.2f}, tuned on val {threshold_metric}) =====")
+    print(f"[CHEM][train] ===== TEST METRICS (threshold {threshold:.2f}, {how}) =====")
     print(f"[CHEM][train] accuracy : {tuned['accuracy']:.4f}")
     print(f"[CHEM][train] precision: {tuned['precision']:.4f}")
     print(f"[CHEM][train] recall   : {tuned['recall']:.4f}")
@@ -528,7 +536,7 @@ def train(
     thr_path = os.path.splitext(_BEST_CHECKPOINT_PATH)[0] + ".threshold.json"
     with open(thr_path, "w", encoding="utf-8") as fh:
         json.dump({"threshold": threshold, "metric": threshold_metric,
-                   "chosen_on": "validation", "test_metrics_at_threshold": tuned}, fh, indent=2)
+                   "chosen_on": "validation" if how.startswith("tuned") else "fixed", "test_metrics_at_threshold": tuned}, fh, indent=2)
     print(f"[CHEM][train] saved tuned threshold -> {thr_path}")
 
     _wandb_log(wandb, {f"test_{k}": v for k, v in test_metrics.items()})
@@ -660,7 +668,11 @@ def main() -> None:
                         help="Use the plain unweighted loss.")
     parser.add_argument("--threshold-metric", dest="threshold_metric", choices=("f1", "accuracy"),
                         default="f1", help="What the validation-tuned threshold maximises.")
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="Fixed decision threshold (e.g. 0.35). Default: tune on validation.")
     args = parser.parse_args()
+    if args.threshold is not None and not 0.0 < args.threshold < 1.0:
+        parser.error("--threshold must be between 0 and 1")
 
     train(
         epochs=args.epochs,
@@ -671,6 +683,7 @@ def main() -> None:
         cache_dir=None if args.no_cache else args.cache_dir,
         use_class_weights=not args.no_class_weights,
         threshold_metric=args.threshold_metric,
+        threshold=args.threshold,
     )
 
 

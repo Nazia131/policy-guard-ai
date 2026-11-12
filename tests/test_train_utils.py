@@ -125,3 +125,18 @@ def test_train_end_to_end_uses_cache_weights_and_threshold(tmp_path, monkeypatch
     # --no-class-weights path still trains
     train_mod.train(**kw, max_samples=30, use_class_weights=False)
     assert "class weights" not in capsys.readouterr().out
+
+
+def test_fixed_threshold_is_used_and_recorded(tmp_path, monkeypatch, capsys):
+    samples = _samples(tmp_path)
+    ckpt = tmp_path / "ckpt" / "best_gat.pt"
+    monkeypatch.setattr(train_mod, "_CHECKPOINT_DIR", str(ckpt.parent))
+    monkeypatch.setattr(train_mod, "_BEST_CHECKPOINT_PATH", str(ckpt))
+    monkeypatch.setattr(train_mod, "_load_samples", lambda split, d: list(samples) if split == "train" else [])
+    monkeypatch.setattr(train_mod, "_init_wandb", lambda *a, **k: None)
+    monkeypatch.setattr("encoders.text_encoder.TextEncoder", _StubText)
+    monkeypatch.setattr("encoders.image_encoder.ImageEncoder", _StubImage)
+    train_mod.train(epochs=2, batch_size=8, cache_dir=None, threshold=0.35)
+    assert "threshold 0.35, fixed by --threshold" in capsys.readouterr().out
+    thr = json.loads((ckpt.parent / "best_gat.threshold.json").read_text())
+    assert thr["threshold"] == 0.35 and thr["chosen_on"] == "fixed"

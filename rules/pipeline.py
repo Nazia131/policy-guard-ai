@@ -33,6 +33,17 @@ class RulesPipeline:
             except Exception as exc:  # noqa: BLE001
                 self.notes.append(f"image model unavailable ({type(exc).__name__}); image analysis uses OCR text only")
                 print(f"[CHEM][rules] CLIP unavailable: {exc}")
+        self.probe = None
+        if self.image_encoder is not None:
+            try:
+                import os
+                from model.clip_linear import DEFAULT_PATH, ClipLinear
+
+                if os.path.isfile(os.environ.get("CHEM_CLIP_LINEAR_PATH") or DEFAULT_PATH):
+                    self.probe = ClipLinear()
+                    print("[CHEM][rules] CLIP image+text probe loaded.")
+            except Exception as exc:  # noqa: BLE001
+                self.notes.append(f"trained probe unavailable ({type(exc).__name__})")
         if use_audio:
             try:
                 from encoders.audio_encoder import AudioEncoder
@@ -102,6 +113,18 @@ class RulesPipeline:
                 score = max(ocr["score"], 1.0 - prod)
             mod_matches["image"], mod_scores["image"], mod_context["image"] = matches, round(min(score, 0.99), 4), ocr["context"]
 
+        probe_p = None
+        if image_bytes is not None and self.probe is not None:
+            try:
+                from model.clip_linear import clip_embed
+
+                ie = self.image_encoder
+                fi, ft = clip_embed(ie._model, ie._preprocess, ie.device, [pil], [(text or "").strip() or image_text])
+                probe_p = float(self.probe.predict_proba(fi, ft)[0])
+                mod_scores["multimodal"] = round(max(0.0, min(0.99, self.probe.to_score(probe_p))), 4)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[CHEM][rules] probe failed: {exc}")
+
         if audio_path is not None:
             if self.audio_encoder is None:
                 raise ValueError("Audio analysis is unavailable on this machine (needs: pip install openai-whisper librosa soundfile).")
@@ -154,6 +177,9 @@ class RulesPipeline:
                 triggered.append(node)
 
         explanation = self._explain(harmful, final, clause, all_matches, mod_context, cross, image_text, transcript)
+        if probe_p is not None:
+            explanation += (f" Trained image+text classifier (CLIP + logistic regression) gave a harm probability of {probe_p:.2f}"
+                            f" (its decision threshold is {self.probe.threshold:.2f}); it does not name a policy category.")
         return {
             "engine": "rules", "harm_score": round(final, 4), "verdict": "HARMFUL" if harmful else "SAFE",
             "policy_clause": clause if harmful else None,

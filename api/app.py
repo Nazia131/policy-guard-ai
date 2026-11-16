@@ -2,7 +2,7 @@
 
 Exposes the full Compositional Harm Emergence Modeling pipeline over HTTP:
 
-    POST /analyze   multipart form (text?, image?, audio?, video?) -> full verdict
+    POST /analyze   multipart form (text?, image?, audio?) -> full verdict
     GET  /health    liveness + model-load status
 
 Design notes
@@ -68,6 +68,8 @@ class CHEMPipeline:
     def __init__(self) -> None:
         """Initialise an unloaded pipeline. Call :meth:`load` before use."""
         self.loaded = False
+        self.mode = "rules"
+        self._rules = None
         self.load_error: Optional[str] = None
         self.text_encoder = None
         self.image_encoder = None
@@ -97,6 +99,18 @@ class CHEMPipeline:
         -------
         None
         """
+        self.mode = os.environ.get("CHEM_MODE", "rules").strip().lower()
+        if self.mode == "rules":
+            try:
+                from rules.pipeline import RulesPipeline
+
+                print("[CHEM][api] Rule-based prototype mode (set CHEM_MODE=model for the trained GAT).")
+                self._rules = RulesPipeline()
+                self.loaded = True
+            except Exception as exc:  # noqa: BLE001
+                self.load_error = f"{type(exc).__name__}: {exc}"
+                traceback.print_exc()
+            return
         try:
             print("[CHEM][api] Loading models (one-time startup)...")
             # Local imports keep the heavy stack out of module import time.
@@ -185,23 +199,40 @@ class CHEMPipeline:
                 f"CHEM models are not loaded: {self.load_error or 'unknown error'}"
             )
 
+        if self._rules is not None:
+            return self._rules.analyze(
+                text=text, image_bytes=image_bytes, audio_path=audio_path, video_path=video_path
+            )
+
         elements: List[Dict[str, Any]] = []
         modality_scores: Dict[str, float] = {}
 
+        # --- OCR: read any text embedded in the image and treat it as caption ---
+        image_text = ""
+        pil_image = None
+        if image_bytes is not None:
+            from PIL import Image
+
+            pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            try:
+                from encoders.ocr import extract_text
+
+                image_text = extract_text(pil_image)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[CHEM][api] OCR skipped: {exc}")
+        combined_text = " ".join(t for t in (text, image_text) if t and t.strip())
+
         # --- Text ---
-        if text:
+        if combined_text:
             print("[CHEM][api] Encoding text...")
-            res = self.text_encoder.encode(text)
+            res = self.text_encoder.encode(combined_text)
             elements.extend(_reindex(res.get("elements", []), "text", len(elements)))
             modality_scores["text"] = float(res.get("harm_score", 0.0))
 
         # --- Image ---
         if image_bytes is not None:
             print("[CHEM][api] Encoding image...")
-            from PIL import Image
-
-            pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            res = self.image_encoder.encode(pil)
+            res = self.image_encoder.encode(pil_image)
             elements.extend(_reindex(res.get("elements", []), "image", len(elements)))
             modality_scores["image"] = float(res.get("harm_score", 0.0))
 
@@ -249,7 +280,7 @@ class CHEMPipeline:
         # --- Exculpatory context dampening ---
         # If the text signals a benign real-world context (acting, audition, etc.)
         # dampen image and video scores before fusion so they don't override context.
-        if _is_exculpatory(text):
+        if _is_exculpatory(combined_text):
             factor = get_coefficient("exculpatory_dampening_factor")
             for mod in ("image", "video"):
                 if mod in modality_scores:
@@ -265,8 +296,12 @@ class CHEMPipeline:
         threshold = get_coefficient("final_harm_threshold")
         verdict = "HARMFUL" if final_score >= threshold else "SAFE"
 
-        matched_pattern = score.get("matched_pattern")
-        policy_clause = score.get("policy_clause")
+        harmful = verdict == "HARMFUL"
+        # Only a HARMFUL verdict may cite a policy clause or triggered elements;
+        # otherwise a SAFE result would carry a misleading "flagged under ..." text.
+        matched_pattern = score.get("matched_pattern") if harmful else None
+        policy_clause = score.get("policy_clause") if harmful else None
+        triggered_elements = score.get("triggered_elements", []) if harmful else []
         triggered_category = None
         if isinstance(policy_clause, dict):
             triggered_category = policy_clause.get("clause_id")
@@ -275,6 +310,8 @@ class CHEMPipeline:
         shap_scores: List[Any] = []
         explanation = ""
         try:
+            if not harmful:
+                raise _NoViolation()
             shap_result = self.shap_explainer.explain(graph) if self.shap_explainer else {}
             gnn_result = self.gnn_explainer.explain(graph) if self.gnn_explainer else {}
             shap_scores = shap_result.get("node_scores", shap_result.get("attributions", []))
@@ -286,23 +323,33 @@ class CHEMPipeline:
                 policy_clause=policy_clause,
             )
             explanation = report.get("explanation", "")
+        except _NoViolation:
+            explanation = (
+                "No policy violation was detected. The combined harm score "
+                f"({final_score:.2f}) is below the {threshold:.2f} decision threshold."
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"[CHEM][api] Explainability degraded: {exc}")
-            explanation = _fallback_explanation(policy_clause, score.get("triggered_elements", []))
+            explanation = _fallback_explanation(policy_clause, triggered_elements)
 
         return {
             "harm_score": round(final_score, 4),
             "verdict": verdict,
             "policy_clause": policy_clause,
             "triggered_category": triggered_category,
-            "triggered_elements": score.get("triggered_elements", []),
+            "triggered_elements": triggered_elements,
             "nodes": graph.get("nodes", []),
             "edges": graph.get("edges", []),
             "explanation": explanation,
             "cross_modal_flag": bool(fused.get("cross_modal_flag", False)),
             "shap_scores": shap_scores,
             "modality_scores": {k: round(v, 4) for k, v in modality_scores.items()},
+            "image_text": image_text,
         }
+
+
+class _NoViolation(Exception):
+    """Internal signal: verdict is SAFE, skip the violation explanation."""
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +453,7 @@ def health() -> Dict[str, Any]:
     return {
         "status": "ok" if pipeline.loaded else "degraded",
         "models_loaded": pipeline.loaded,
+        "mode": pipeline.mode,
         "error": pipeline.load_error,
     }
 
@@ -415,7 +463,6 @@ async def analyze_endpoint(
     text: Optional[str] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
     audio: Optional[UploadFile] = File(default=None),
-    video: Optional[UploadFile] = File(default=None),
 ) -> JSONResponse:
     """Analyse multimodal content and return a full explainable verdict.
 
@@ -444,16 +491,10 @@ async def analyze_endpoint(
             audio_path = _spool(await audio.read(), suffix=os.path.splitext(audio.filename or "a.wav")[1])
             tmp_paths.append(audio_path)
 
-        video_path = None
-        if video is not None:
-            video_path = _spool(await video.read(), suffix=os.path.splitext(video.filename or "v.mp4")[1])
-            tmp_paths.append(video_path)
-
         result = pipeline.analyze(
             text=text,
             image_bytes=image_bytes,
             audio_path=audio_path,
-            video_path=video_path,
         )
         return JSONResponse(content=_sanitize(result))
     except Exception as exc:  # noqa: BLE001

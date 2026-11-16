@@ -270,7 +270,7 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
   <div class="col">
     <div class="sec-hdr">
       <span><span class="sec-tri">►</span>INPUTS</span>
-      <span class="tag">4 modalities</span>
+      <span class="tag">3 modalities</span>
     </div>
 
     <!-- Text -->
@@ -302,12 +302,6 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
       <button class="rec-btn" onclick="alert('Recording not supported in this build.')">
         <div class="rec-dot"></div>[ Record ]
       </button>
-    </div>
-
-    <!-- Video -->
-    <div class="input-block">
-      <div class="input-label"><span class="marker">►</span>Video</div>
-      <div class="coming"><span>[ Coming soon ]</span><span style="color:var(--muted2)">—</span></div>
     </div>
 
     <!-- Policies -->
@@ -430,7 +424,7 @@ canvas#graph{background:var(--s1);border:1px solid var(--border);flex:1;min-heig
 </div><!-- /shell -->
 
 <script>
-const API = 'http://127.0.0.1:8000';
+const API = location.protocol.startsWith('http') ? location.origin : 'http://127.0.0.1:8000';
 
 /* ── policies list ── */
 const POLICIES = ['Violence','Hate Speech','Self-harm','Drugs','Extremism','Weapons'];
@@ -559,7 +553,7 @@ function drawGraph(nodes, edges) {
   ctx.clearRect(0,0,W,160);
 
   const EDGE_COLORS = {'0':'#00ff88','1':'#4da6ff','2':'#ffaa00','3':'#ffaa00','4':'#ff3b3b'};
-  const MOD_COLORS  = {text:'#00ff88',image:'#4da6ff',audio:'#b06aff',video:'#ffaa00',action:'#ff3b3b'};
+  const MOD_COLORS  = {text:'#00ff88',image:'#4da6ff',audio:'#b06aff',action:'#ff3b3b'};
 
   // Lay out nodes in a circle
   const cx=W/2, cy=80, rad=Math.min(cx,cy)-24;
@@ -619,18 +613,22 @@ async function runAnalysis() {
   const audF=document.getElementById('aud-file').files[0];
   if(audF) fd.append('audio',audF);
 
-  setTimeout(()=>{ setStep(3); bstat.textContent='building graph…'; },800);
-  setTimeout(()=>{ setStep(4); bstat.textContent='matching patterns…'; },1600);
-  setTimeout(()=>{ setStep(5); bstat.textContent='scoring…'; },2400);
+  const stepTimers=[
+    setTimeout(()=>{ setStep(3); bstat.textContent='building graph…'; },800),
+    setTimeout(()=>{ setStep(4); bstat.textContent='matching patterns…'; },1600),
+    setTimeout(()=>{ setStep(5); bstat.textContent='scoring…'; },2400),
+  ];
+  const stopSteps=()=>stepTimers.forEach(clearTimeout);
 
   try {
     const resp = await fetch(`${API}/analyze`,{method:'POST',body:fd});
     const data = await resp.json();
+    stopSteps();
     if(!resp.ok) throw new Error(data.error||resp.statusText);
-    setStep(6); bstat.textContent='complete';
+    setStep(6); bstat.textContent='complete'+(data.engine==='rules'?' · rule-based prototype':'');
     renderResult(data);
   } catch(e) {
-    bstat.textContent='error: '+e.message;
+    stopSteps(); bstat.textContent='error: '+e.message;
     setStep(1);
   } finally {
     btn.disabled=false; spin.style.display='none';

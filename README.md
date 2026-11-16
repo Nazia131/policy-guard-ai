@@ -304,3 +304,28 @@ pattern tagging rules, metric computation).
 If you use CHEM in academic work, please cite this repository and the underlying
 datasets (Hateful Memes; UCF-Crime) and models (RoBERTa, CLIP, Whisper,
 VideoMAE, toxic-bert) per their respective licenses.
+
+## Rule-based prototype mode (default)
+
+`CHEM_MODE=rules` (the default) runs a hand-written rule engine instead of the trained GAT:
+
+* **Text** (typed text, text read from images by OCR, audio transcripts): lexicons, regex patterns and
+  context rules in `policy/rules.json` (slurs, dehumanising language, COVID-era blame patterns, threats,
+  insults, self-harm encouragement, misinformation claims, coordinated harassment, child safety, ...).
+  Context lowers scores: negation, benign senses ("got my shot", "killing it"), news/reporting language,
+  counter-speech ("stop Asian hate"). Edit the JSON to add or reweight rules - no code change needed.
+* **Image**: OCR text goes through the same rules; CLIP concept scores (if CLIP is installed) are added with
+  per-category scales from `rules.json`.
+* **Audio**: Whisper transcript goes through the rules; acoustic agitation only counts when the transcript
+  already shows some harm.
+* No PyTorch is needed for text/OCR. Run `python -m uvicorn api.app:app --port 8000`.
+* Use `CHEM_MODE=model` for the trained GAT pipeline.
+
+### Measuring it honestly
+
+```
+python -m evaluate.rules_eval --data_dir data/hateful_memes --show-errors 25   # read DEV mistakes, refine rules.json
+python -m evaluate.rules_eval --data_dir data/hateful_memes --save-threshold   # threshold chosen on DEV, scored once on TEST
+```
+
+The threshold is chosen on the dev split only and the test split is scored once. Do not tune rules on test.

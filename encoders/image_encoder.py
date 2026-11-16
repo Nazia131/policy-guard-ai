@@ -26,6 +26,34 @@ from utils.config import get_coefficient, get_policy_clause, get_visual_concepts
 from utils.embeddings import to_fixed_dim
 
 
+def decide_harmful(
+    probs: List[float],
+    sims: List[float],
+    harmful_flags: List[bool],
+    min_conf: float,
+    min_sim: float,
+    min_margin: float,
+) -> List[bool]:
+    """Decide which concepts count as genuine harmful detections.
+
+    A softmax over a closed prompt set always puts its mass *somewhere*, so a
+    harmful prompt is only accepted when all three hold:
+
+    * its softmax probability exceeds ``min_conf``;
+    * its raw cosine similarity exceeds ``min_sim`` (the image really resembles
+      the prompt, not just "least unlike" it);
+    * it beats the strongest benign prompt by at least ``min_margin``.
+
+    Inputs: per-concept probabilities, cosine similarities, harmful flags and
+    the three thresholds.  Outputs: one bool per concept.
+    """
+    best_safe = max((p for p, h in zip(probs, harmful_flags) if not h), default=0.0)
+    return [
+        bool(h and p > min_conf and s >= min_sim and (p - best_safe) >= min_margin)
+        for p, s, h in zip(probs, sims, harmful_flags)
+    ]
+
+
 class ImageEncoder:
     """Encode an image into CHEM elements via CLIP zero-shot classification.
 
@@ -70,6 +98,8 @@ class ImageEncoder:
 
         # Decision threshold for calling the top concept "harmful".
         self._min_conf = float(get_coefficient("image_harmful_min_confidence", config_path))
+        self._min_sim = float(get_coefficient("image_min_similarity", config_path))
+        self._min_margin = float(get_coefficient("image_min_margin", config_path))
 
         # Build the ordered concept table: (prompt, category, harmful_flag).
         concepts = get_visual_concepts(config_path)
@@ -173,7 +203,9 @@ class ImageEncoder:
             img_features = self._model.encode_image(tensor)
             img_features = img_features / img_features.norm(dim=-1, keepdim=True)
             # CLIP's learned temperature scaling before softmax.
-            logits = self._model.logit_scale.exp() * img_features @ self._text_features.t()
+            cos = img_features @ self._text_features.t()
+            logits = self._model.logit_scale.exp() * cos
+            sims = cos.squeeze(0).detach().cpu().tolist()
             probs = logits.softmax(dim=-1).squeeze(0).detach().cpu().tolist()
 
         base_embedding = to_fixed_dim(img_features.squeeze(0).detach().cpu().tolist())
@@ -182,7 +214,11 @@ class ImageEncoder:
         top_i = max(range(len(probs)), key=lambda i: probs[i])
         top_concept = self._concepts[top_i]
         top_score = float(probs[top_i])
-        top_is_harmful = bool(top_concept["harmful"]) and top_score > self._min_conf
+        accepted = decide_harmful(
+            probs, sims, [bool(c["harmful"]) for c in self._concepts],
+            self._min_conf, self._min_sim, self._min_margin,
+        )
+        top_is_harmful = accepted[top_i]
 
         # --- Build elements --------------------------------------------------
         elements: List[Dict[str, Any]] = []
@@ -207,10 +243,8 @@ class ImageEncoder:
         # Emit a dedicated node for every harmful concept clearing the
         # threshold, tracking the max qualifying harmful score for harm_score.
         harm_score = 0.0
-        for concept, prob in zip(self._concepts, probs):
-            if not concept["harmful"]:
-                continue
-            if prob <= self._min_conf:
+        for concept, prob, ok in zip(self._concepts, probs, accepted):
+            if not ok:
                 continue
             harm_score = max(harm_score, float(prob))
             clause = get_policy_clause(concept["category"], self._config_path)

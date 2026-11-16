@@ -431,14 +431,16 @@
     "cross_modal_bonus": 0.2,
     "cross_modal_min_image_score": 0.3,
     "cross_modal_min_audio_score": 0.25,
-    "audio_transcript_weight": 0.7,
-    "audio_acoustic_weight": 0.3,
+    "audio_transcript_weight": 0.9,
+    "audio_acoustic_weight": 0.1,
     "gat_vs_pattern_weight": 0.7,
     "pattern_similarity_weight": 0.3,
     "co_occurrence_window": 2,
-    "acoustic_agitation_sigma_ratio": 1.0,
+    "acoustic_agitation_sigma_ratio": 0.35,
     "image_min_similarity": 0.22,
-    "image_min_margin": 0.15
+    "image_min_margin": 0.15,
+    "audio_acoustic_gate_min_transcript": 0.2,
+    "audio_max_seconds": 120
   },
   "node_types": [
     "text",

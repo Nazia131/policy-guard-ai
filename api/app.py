@@ -2,7 +2,7 @@
 
 Exposes the full Compositional Harm Emergence Modeling pipeline over HTTP:
 
-    POST /analyze   multipart form (text?, image?, audio?, video?) -> full verdict
+    POST /analyze   multipart form (text?, image?, audio?) -> full verdict
     GET  /health    liveness + model-load status
 
 Design notes
@@ -68,6 +68,8 @@ class CHEMPipeline:
     def __init__(self) -> None:
         """Initialise an unloaded pipeline. Call :meth:`load` before use."""
         self.loaded = False
+        self.mode = "rules"
+        self._rules = None
         self.load_error: Optional[str] = None
         self.text_encoder = None
         self.image_encoder = None
@@ -97,6 +99,18 @@ class CHEMPipeline:
         -------
         None
         """
+        self.mode = os.environ.get("CHEM_MODE", "rules").strip().lower()
+        if self.mode == "rules":
+            try:
+                from rules.pipeline import RulesPipeline
+
+                print("[CHEM][api] Rule-based prototype mode (set CHEM_MODE=model for the trained GAT).")
+                self._rules = RulesPipeline()
+                self.loaded = True
+            except Exception as exc:  # noqa: BLE001
+                self.load_error = f"{type(exc).__name__}: {exc}"
+                traceback.print_exc()
+            return
         try:
             print("[CHEM][api] Loading models (one-time startup)...")
             # Local imports keep the heavy stack out of module import time.
@@ -183,6 +197,11 @@ class CHEMPipeline:
         if not self.loaded:
             raise RuntimeError(
                 f"CHEM models are not loaded: {self.load_error or 'unknown error'}"
+            )
+
+        if self._rules is not None:
+            return self._rules.analyze(
+                text=text, image_bytes=image_bytes, audio_path=audio_path, video_path=video_path
             )
 
         elements: List[Dict[str, Any]] = []
@@ -434,6 +453,7 @@ def health() -> Dict[str, Any]:
     return {
         "status": "ok" if pipeline.loaded else "degraded",
         "models_loaded": pipeline.loaded,
+        "mode": pipeline.mode,
         "error": pipeline.load_error,
     }
 
@@ -443,7 +463,6 @@ async def analyze_endpoint(
     text: Optional[str] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
     audio: Optional[UploadFile] = File(default=None),
-    video: Optional[UploadFile] = File(default=None),
 ) -> JSONResponse:
     """Analyse multimodal content and return a full explainable verdict.
 
@@ -472,16 +491,10 @@ async def analyze_endpoint(
             audio_path = _spool(await audio.read(), suffix=os.path.splitext(audio.filename or "a.wav")[1])
             tmp_paths.append(audio_path)
 
-        video_path = None
-        if video is not None:
-            video_path = _spool(await video.read(), suffix=os.path.splitext(video.filename or "v.mp4")[1])
-            tmp_paths.append(video_path)
-
         result = pipeline.analyze(
             text=text,
             image_bytes=image_bytes,
             audio_path=audio_path,
-            video_path=video_path,
         )
         return JSONResponse(content=_sanitize(result))
     except Exception as exc:  # noqa: BLE001

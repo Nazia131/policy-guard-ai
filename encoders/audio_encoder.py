@@ -96,6 +96,9 @@ class AudioEncoder:
         self._agitation_sigma_ratio = float(
             get_coefficient("acoustic_agitation_sigma_ratio", config_path)
         )
+        # Loud / pitch-varied speech is only suspicious when the words already are.
+        self._acoustic_gate = float(get_coefficient("audio_acoustic_gate_min_transcript", config_path))
+        self._max_seconds = float(get_coefficient("audio_max_seconds", config_path))
 
         print(
             f"[CHEM][audio_encoder] Ready. weights(transcript={self._w_transcript}, "
@@ -120,7 +123,8 @@ class AudioEncoder:
         import numpy as np
 
         # Load at native sample rate (mono).
-        y, sr = librosa.load(audio_path, sr=None, mono=True)
+        # 16 kHz mono, capped length: fast pyin and the same rate Whisper uses.
+        y, sr = librosa.load(audio_path, sr=16000, mono=True, duration=self._max_seconds)
         duration = float(librosa.get_duration(y=y, sr=sr)) if len(y) else 0.0
 
         if len(y) == 0:
@@ -144,7 +148,8 @@ class AudioEncoder:
         zcr = float(np.mean(librosa.feature.zero_crossing_rate(y=y)))
         # Tempo (rhythmic intensity proxy).
         try:
-            tempo = float(np.atleast_1d(librosa.beat.tempo(y=y, sr=sr))[0])
+            _tempo_fn = getattr(getattr(librosa.feature, "rhythm", None), "tempo", None) or librosa.beat.tempo
+            tempo = float(np.atleast_1d(_tempo_fn(y=y, sr=sr))[0])
         except Exception:
             tempo = 0.0
 
@@ -231,7 +236,12 @@ class AudioEncoder:
         transcript = ""
         language = "unknown"
         try:
-            result = self._whisper.transcribe(audio_path)
+            # Decode ourselves so Whisper never needs the ffmpeg binary (a common
+            # silent failure on Windows) and long clips are capped.
+            import librosa
+
+            wave, _ = librosa.load(audio_path, sr=16000, mono=True, duration=self._max_seconds)
+            result = self._whisper.transcribe(wave.astype("float32"), fp16=(self.device != "cpu"))
             transcript = (result.get("text") or "").strip()
             language = result.get("language", "unknown")
         except Exception as exc:
@@ -262,6 +272,9 @@ class AudioEncoder:
                 "agitated": False,
             }
         acoustic_harm = float(features.get("agitation", 0.0))
+        if transcript_harm < self._acoustic_gate:
+            acoustic_harm = 0.0  # agitation alone is not harm
+            features["agitated"] = False
         duration = float(features.get("duration", 0.0))
 
         # --- Blend into a single harm score ---------------------------------
